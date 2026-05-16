@@ -376,7 +376,7 @@ function RegisterPage({ onNavigate, onLogin }: { onNavigate: (v: View) => void; 
         name: name.trim(),
         email,
         initials,
-        role: finalRole,
+        role: role,
       });
     } catch (err: any) {
       setError(err?.response?.data?.error || "Registration failed.");
@@ -717,24 +717,124 @@ function CustomerDashboard({ onNavigate, user }: { onNavigate: (v: View) => void
 
 function AdminDashboard({ onNavigate, user }: { onNavigate: (v: View) => void; user: AuthUser | null }) {
   const [activeSection, setActiveSection] = useState<AdminSection>("requests");
+
+  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [tables, setTables] = useState<Table[]>([]);
+
   const [requests, setRequests] = useState<any[]>([]);
   const [tableFilter, setTableFilter] = useState("All");
 
-  const pendingCount = requests.filter((r) => r.status === "Pending").length;
+  // Add Restaurant form
+  const [newRestaurant, setNewRestaurant] = useState({
+    name: "",
+    description: "",
+    address: "",
+    city: "",
+    cuisine: "",
+    phone: "",
+    opening_time: "08:00:00",
+    closing_time: "22:00:00",
+    is_active: true,
+  });
+
+  // Add Table form
+  const [newTable, setNewTable] = useState({
+    restaurant_id: "",
+    table_number: "",
+    capacity: 2,
+    status: "available" as Table["status"],
+    location: "",
+  });
+
+  const pendingCount = requests.filter((r) => r.status === "pending").length;
   const availableCount = tables.filter((t) => t.status === "available").length;
   const reservedCount = tables.filter((t) => t.status === "reserved").length;
 
-  const filteredTables = tableFilter === "All" ? tables : tables.filter((t) => t.status === (tableFilter === "Available" ? "available" : tableFilter === "Reserved" ? "reserved" : "maintenance"));
+  const filteredTables =
+    tableFilter === "All"
+      ? tables
+      : tables.filter(
+          (t) =>
+            t.status ===
+            (tableFilter === "Available" ? "available" : tableFilter === "Reserved" ? "reserved" : "maintenance")
+        );
 
   const displayName = user?.name ?? "Restaurant Manager";
   const displayInitials = user?.initials ?? "RM";
 
-  // TEMP: show empty lists while wiring.
   useEffect(() => {
-    setTables([]);
-    setRequests([]);
+    const load = async () => {
+      try {
+        const [rRes, tRes] = await Promise.all([api.get("/api/restaurants"), api.get("/api/tables")]);
+        setRestaurants((rRes.data?.restaurants ?? []) as Restaurant[]);
+        setTables((tRes.data?.tables ?? []) as Table[]);
+
+        // Optional: load incoming reservation requests
+        const all = await api.get("/api/reservations");
+        const reservations = (all.data?.reservations ?? []) as any[];
+        setRequests(reservations.filter((x) => x.status === "pending"));
+      } catch (e) {
+        // Keep UI usable even if backend is down
+        setRestaurants([]);
+        setTables([]);
+        setRequests([]);
+      }
+    };
+    load();
   }, []);
+
+  const handleAddRestaurant = async () => {
+    try {
+      if (!newRestaurant.name.trim() || !newRestaurant.address.trim() || !newRestaurant.city.trim()) return;
+      await api.post("/api/restaurants", {
+        ...newRestaurant,
+        description: newRestaurant.description || undefined,
+        cuisine: newRestaurant.cuisine || undefined,
+        phone: newRestaurant.phone || undefined,
+        opening_time: newRestaurant.opening_time,
+        closing_time: newRestaurant.closing_time,
+        owner_id: user?.id,
+      });
+
+      const rRes = await api.get("/api/restaurants");
+      setRestaurants((rRes.data?.restaurants ?? []) as Restaurant[]);
+
+      setNewRestaurant({
+        name: "",
+        description: "",
+        address: "",
+        city: "",
+        cuisine: "",
+        phone: "",
+        opening_time: "08:00:00",
+        closing_time: "22:00:00",
+        is_active: true,
+      });
+    } catch (e) {
+      // no-op for now
+    }
+  };
+
+  const handleAddTable = async () => {
+    try {
+      if (!newTable.restaurant_id) return;
+      if (!newTable.table_number.trim()) return;
+      await api.post("/api/tables", {
+        restaurant_id: newTable.restaurant_id,
+        table_number: newTable.table_number,
+        capacity: Number(newTable.capacity),
+        status: newTable.status,
+        location: newTable.location || undefined,
+      });
+
+      const tRes = await api.get("/api/tables");
+      setTables((tRes.data?.tables ?? []) as Table[]);
+
+      setNewTable({ restaurant_id: newTable.restaurant_id, table_number: "", capacity: 2, status: "available", location: "" });
+    } catch (e) {
+      // no-op for now
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -823,6 +923,171 @@ function AdminDashboard({ onNavigate, user }: { onNavigate: (v: View) => void; u
             ))}
           </div>
 
+          <div className="grid grid-cols-12 gap-4 mb-8">
+            <div className="col-span-12 lg:col-span-6 bg-card border border-border rounded-sm p-6">
+              <h2 className="font-display text-xl text-foreground">Add Restaurant</h2>
+              <p className="text-muted-foreground text-xs font-mono mt-0.5">Create a restaurant your customers can book</p>
+              <div className="mt-5 grid grid-cols-12 gap-3">
+                <div className="col-span-12">
+                  <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Name</label>
+                  <input
+                    className="w-full bg-input-background text-foreground text-sm px-4 py-2 rounded-sm border border-border outline-none focus:border-[#059669] transition-colors"
+                    value={newRestaurant.name}
+                    onChange={(e) => setNewRestaurant((s) => ({ ...s, name: e.target.value }))}
+                    placeholder="e.g. Sakura Sushi"
+                  />
+                </div>
+                <div className="col-span-12">
+                  <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Description</label>
+                  <textarea
+                    className="w-full bg-input-background text-foreground text-sm px-4 py-2 rounded-sm border border-border outline-none focus:border-[#059669] transition-colors"
+                    value={newRestaurant.description}
+                    onChange={(e) => setNewRestaurant((s) => ({ ...s, description: e.target.value }))}
+                    placeholder="e.g. Fresh rolls & seasonal specials"
+                    rows={3}
+                  />
+                </div>
+                <div className="col-span-12">
+                  <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Address</label>
+                  <input
+                    className="w-full bg-input-background text-foreground text-sm px-4 py-2 rounded-sm border border-border outline-none focus:border-[#059669] transition-colors"
+                    value={newRestaurant.address}
+                    onChange={(e) => setNewRestaurant((s) => ({ ...s, address: e.target.value }))}
+                    placeholder="Street address"
+                  />
+                </div>
+                <div className="col-span-12 sm:col-span-6">
+                  <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">City</label>
+                  <input
+                    className="w-full bg-input-background text-foreground text-sm px-4 py-2 rounded-sm border border-border outline-none focus:border-[#059669] transition-colors"
+                    value={newRestaurant.city}
+                    onChange={(e) => setNewRestaurant((s) => ({ ...s, city: e.target.value }))}
+                    placeholder="e.g. Boston"
+                  />
+                </div>
+                <div className="col-span-12 sm:col-span-6">
+                  <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Cuisine</label>
+                  <input
+                    className="w-full bg-input-background text-foreground text-sm px-4 py-2 rounded-sm border border-border outline-none focus:border-[#059669] transition-colors"
+                    value={newRestaurant.cuisine}
+                    onChange={(e) => setNewRestaurant((s) => ({ ...s, cuisine: e.target.value }))}
+                    placeholder="e.g. Japanese"
+                  />
+                </div>
+                <div className="col-span-12 sm:col-span-6">
+                  <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Opening time</label>
+                  <input
+                    type="time"
+                    className="w-full bg-input-background text-foreground text-sm px-4 py-2 rounded-sm border border-border outline-none focus:border-[#059669] transition-colors"
+                    value={newRestaurant.opening_time}
+                    onChange={(e) => setNewRestaurant((s) => ({ ...s, opening_time: e.target.value }))}
+                  />
+                </div>
+                <div className="col-span-12 sm:col-span-6">
+                  <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Closing time</label>
+                  <input
+                    type="time"
+                    className="w-full bg-input-background text-foreground text-sm px-4 py-2 rounded-sm border border-border outline-none focus:border-[#059669] transition-colors"
+                    value={newRestaurant.closing_time}
+                    onChange={(e) => setNewRestaurant((s) => ({ ...s, closing_time: e.target.value }))}
+                  />
+                </div>
+                <div className="col-span-12 sm:col-span-6">
+                  <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Phone</label>
+                  <input
+                    className="w-full bg-input-background text-foreground text-sm px-4 py-2 rounded-sm border border-border outline-none focus:border-[#059669] transition-colors"
+                    value={newRestaurant.phone}
+                    onChange={(e) => setNewRestaurant((s) => ({ ...s, phone: e.target.value }))}
+                    placeholder="Optional"
+                  />
+                </div>
+                <div className="col-span-12 sm:col-span-6 flex items-end">
+                  <button
+                    onClick={handleAddRestaurant}
+                    type="button"
+                    className="w-full bg-[#059669] text-white text-sm font-medium py-2.5 rounded-sm hover:bg-[#047857] transition-colors"
+                  >
+                    Create Restaurant
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="col-span-12 lg:col-span-6 bg-card border border-border rounded-sm p-6">
+              <h2 className="font-display text-xl text-foreground">Add Table</h2>
+              <p className="text-muted-foreground text-xs font-mono mt-0.5">Set capacity & availability status</p>
+              <div className="mt-5 grid grid-cols-12 gap-3">
+                <div className="col-span-12">
+                  <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Restaurant</label>
+                  <select
+                    className="w-full bg-input-background text-foreground text-sm px-4 py-2 rounded-sm border border-border outline-none focus:border-[#059669] transition-colors"
+                    value={newTable.restaurant_id}
+                    onChange={(e) => setNewTable((s) => ({ ...s, restaurant_id: e.target.value }))}
+                  >
+                    <option value="">Select restaurant...</option>
+                    {restaurants.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-span-12 sm:col-span-6">
+                  <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Table number</label>
+                  <input
+                    className="w-full bg-input-background text-foreground text-sm px-4 py-2 rounded-sm border border-border outline-none focus:border-[#059669] transition-colors"
+                    value={newTable.table_number}
+                    onChange={(e) => setNewTable((s) => ({ ...s, table_number: e.target.value }))}
+                    placeholder="T-01"
+                  />
+                </div>
+                <div className="col-span-12 sm:col-span-6">
+                  <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Capacity</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    className="w-full bg-input-background text-foreground text-sm px-4 py-2 rounded-sm border border-border outline-none focus:border-[#059669] transition-colors"
+                    value={newTable.capacity}
+                    onChange={(e) => setNewTable((s) => ({ ...s, capacity: Number(e.target.value) }))}
+                  />
+                </div>
+                <div className="col-span-12 sm:col-span-6">
+                  <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Status</label>
+                  <select
+                    className="w-full bg-input-background text-foreground text-sm px-4 py-2 rounded-sm border border-border outline-none focus:border-[#059669] transition-colors"
+                    value={newTable.status}
+                    onChange={(e) => setNewTable((s) => ({ ...s, status: e.target.value as any }))}
+                  >
+                    {(["available", "reserved", "maintenance"] as Table["status"][]).map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-span-12 sm:col-span-6">
+                  <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Location</label>
+                  <input
+                    className="w-full bg-input-background text-foreground text-sm px-4 py-2 rounded-sm border border-border outline-none focus:border-[#059669] transition-colors"
+                    value={newTable.location}
+                    onChange={(e) => setNewTable((s) => ({ ...s, location: e.target.value }))}
+                    placeholder="Optional"
+                  />
+                </div>
+                <div className="col-span-12 flex items-end">
+                  <button
+                    onClick={handleAddTable}
+                    type="button"
+                    className="w-full bg-[#059669] text-white text-sm font-medium py-2.5 rounded-sm hover:bg-[#047857] transition-colors"
+                  >
+                    Create Table
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {(activeSection === "tables" || activeSection === "overview") && (
             <div className="mb-8">
               <div className="flex items-center justify-between mb-5">
@@ -854,10 +1119,24 @@ function AdminDashboard({ onNavigate, user }: { onNavigate: (v: View) => void; u
 
                 {filteredTables.length === 0 ? (
                   <div className="py-12 text-center text-muted-foreground text-sm">No tables found for this filter.</div>
-                ) : null}
+                ) : (
+                  <div className="divide-y divide-border">
+                    {filteredTables.map((t) => (
+                      <div key={t.id} className="grid grid-cols-12 gap-4 px-6 py-3">
+                        <p className="col-span-3 text-sm text-foreground font-mono">{t.table_number}</p>
+                        <p className="col-span-3 text-sm text-foreground font-mono">{t.capacity}</p>
+                        <p className="col-span-3 text-sm text-foreground/70 font-mono">{t.location ?? "—"}</p>
+                        <p className="col-span-3">
+                          <StatusBadge status={t.status} />
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
+
 
           {(activeSection === "requests" || activeSection === "overview") && (
             <div>
