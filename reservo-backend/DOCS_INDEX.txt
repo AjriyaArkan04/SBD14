@@ -1,0 +1,72 @@
+📚 DOKUMENTASI TERSEDIA
+=======================
+
+Semua file dokumentasi sudah siap di folder reservo-backend/:
+
+📖 BACA DULU (Prioritas tinggi):
+1. QUICK_START.txt        ← Setup dalam 7 langkah singkat
+2. SETUP.md               ← Dokumentasi lengkap setup Neon + Database
+
+🔗 REFERENCE:
+3. NEON_SETUP.md          ← Panduan detail Neon + Troubleshooting
+4. API_TESTING.md         ← Cara test semua API endpoints
+5. README.md              ← Dokumentasi umum backend
+
+⚙️ COMMAND CHEATSHEET:
+────────────────────
+npm install              Install dependencies
+npm run dev              Start development server (auto-reload)
+npm run start            Start production server
+npm run sync-db          Create/update database tables
+npm run test-connection  Test database connection
+
+📋 STEP-BY-STEP SETUP:
+────────────────────
+
+1. Go to https://neon.tech
+2. Sign up (Google/GitHub)
+3. Create project "reservo"
+4. Copy connection string
+5. Edit .env file
+6. npm install
+7. npm run sync-db
+8. npm run test-connection
+9. npm run dev
+10. Test API: http://localhost:5000/api/health
+
+✅ NEXT STEPS:
+──────────────
+After setup:
+- Read API_TESTING.md for endpoint examples
+- Test create user/restaurant/table/reservation
+- Setup Frontend to connect to backend
+- Deploy to production when ready
+
+🆘 PROBLEMS?
+────────────
+1. Check QUICK_START.txt first
+2. Then read NEON_SETUP.md Troubleshooting section
+3. Check error messages carefully
+4. Test connection with: npm run test-connection
+
+════════════════════════════════════════════════════════════════
+
+🎯 QUICK REFERENCE:
+
+Database: Neon PostgreSQL (Cloud)
+Frontend: (Coming soon)
+Backend: Node.js + Express + Sequelize
+API Port: 5000
+API Base URL: http://localhost:5000/api
+
+Endpoints:
+- /users         → Register, login, CRUD users
+- /restaurants   → CRUD restaurants
+- /tables        → CRUD tables, manage availability
+- /reservations  → CRUD reservations, manage status
+
+════════════════════════════════════════════════════════════════
+
+Questions? Read docs first! 📚
+
+Happy coding! 🚀

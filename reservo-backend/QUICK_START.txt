@@ -1,0 +1,67 @@
+SETUP STEPS SINGKAT (Read This First!)
+======================================
+
+1️⃣ SETUP NEON DATABASE
+   → Buka https://neon.tech
+   → Sign up (pilih Google/GitHub)
+   → Buat project "reservo"
+   → Tunggu 1-2 menit
+
+2️⃣ COPY CONNECTION STRING
+   → Di Neon dashboard, klik "Connection string"
+   → Copy string yang ada "postgresql://"
+   → Contoh: postgresql://neondb_owner:password@ep-xxx.us-east-1.aws.neon.tech/neondb?sslmode=require
+
+3️⃣ EDIT .env FILE
+   Buka file: reservo-backend/.env
+   
+   Pilih salah satu:
+   
+   OPTION A (Mudah):
+   DATABASE_URL=postgresql://neondb_owner:password@ep-xxx.us-east-1.aws.neon.tech/neondb?sslmode=require
+   
+   ATAU
+   
+   OPTION B (Manual):
+   DB_NAME=neondb
+   DB_USER=neondb_owner
+   DB_PASSWORD=password_dari_neon
+   DB_HOST=ep-xxx.us-east-1.aws.neon.tech
+   DB_PORT=5432
+
+   Tambahkan juga:
+   PORT=5000
+   NODE_ENV=development
+   JWT_SECRET=any-secret-key
+
+4️⃣ INSTALL DEPENDENCIES
+   cd reservo-backend
+   npm install
+
+5️⃣ SYNC DATABASE
+   npm run sync-db
+
+6️⃣ TEST CONNECTION
+   npm run test-connection
+
+7️⃣ START SERVER
+   npm run dev
+
+✅ DONE!
+Server running di: http://localhost:5000
+Test: http://localhost:5000/api/health
+
+═══════════════════════════════════════════════════════════
+
+📖 DOKUMENTASI LENGKAP: Baca SETUP.md
+⚠️  TROUBLESHOOTING: Baca NEON_SETUP.md
+
+═══════════════════════════════════════════════════════════
+
+COMMANDS BERGUNA:
+  npm run dev              → Start server (auto-reload)
+  npm run sync-db          → Create database tables
+  npm run test-connection  → Test database connection
+  npm start                → Start production server
+
+═══════════════════════════════════════════════════════════
