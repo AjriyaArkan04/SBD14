@@ -105,6 +105,7 @@ exports.getAvailableTablesByRestaurant = async (req, res) => {
   try {
     const { restaurant_id } = req.params;
     const { capacity, date, start_time, end_time } = req.query;
+    const { Op } = require('sequelize');
 
     const restaurant = await Restaurant.findByPk(restaurant_id);
     if (!restaurant) {
@@ -114,7 +115,6 @@ exports.getAvailableTablesByRestaurant = async (req, res) => {
     // Cari table yang punya confirmed/pending reservation yang overlap
     let bookedTableIds = [];
     if (date && start_time && end_time) {
-      const { Op } = require('sequelize');
       const { Reservation } = require('../models');
       const booked = await Reservation.findAll({
         where: {
@@ -133,11 +133,10 @@ exports.getAvailableTablesByRestaurant = async (req, res) => {
       bookedTableIds = booked.map((r) => r.table_id);
     }
 
-    const { Op } = require('sequelize');
     const tables = await Table.findAll({
       where: {
         restaurant_id,
-        status: 'available',
+        status: { [Op.ne]: 'maintenance' },
         ...(capacity && { capacity: { [Op.gte]: Number(capacity) } }),
         ...(bookedTableIds.length > 0 && { id: { [Op.notIn]: bookedTableIds } }),
       },

@@ -71,14 +71,6 @@ exports.createReservation = async (req, res) => {
       ...(isAutoConfirm && { confirmed_at: new Date() }),
     });
 
-    // Auto-update table hanya kalau langsung confirmed
-    if (isAutoConfirm) {
-      await Table.update(
-        { status: 'reserved' },
-        { where: { id: table_id } }
-      );
-    }
-
     res.status(201).json({
       message: 'Reservation created successfully',
       reservation,
@@ -253,12 +245,6 @@ exports.confirmReservation = async (req, res) => {
     reservation.status = 'confirmed';
     reservation.confirmed_at = new Date();
     await reservation.save();
-
-    // Auto-update table status jadi reserved
-    await Table.update(
-      { status: 'reserved' },
-      { where: { id: reservation.table_id } }
-    );
 
     res.status(200).json({
       message: 'Reservation confirmed successfully',

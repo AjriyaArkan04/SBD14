@@ -541,7 +541,7 @@ function LandingPage({ onNavigate }: { onNavigate: (v: View) => void }) {
             <em className="not-italic text-[#059669]">begins with a reservation</em>
           </h1>
           <p className="text-white/50 text-base md:text-lg mb-12 max-w-xl mx-auto leading-relaxed">
-            Discover the finest restaurants and secure your table in seconds. No calls, no waiting — just dining.
+            Discover the finest restaurants and secure your table in seconds. No calls, no waiting, just dining.
           </p>
           <div className="bg-white shadow-2xl rounded-sm flex flex-col md:flex-row max-w-3xl mx-auto overflow-hidden">
             <div className="flex items-center gap-3 flex-1 px-5 py-3.5 border-b md:border-b-0 md:border-r border-border">
