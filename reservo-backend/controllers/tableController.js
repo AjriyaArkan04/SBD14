@@ -1,5 +1,4 @@
-const Table = require('../models/Table');
-const Restaurant = require('../models/Restaurants');
+const { Table, Restaurant } = require('../models');
 
 // Create table
 exports.createTable = async (req, res) => {
@@ -36,6 +35,7 @@ exports.getAllTables = async (req, res) => {
       include: [
         {
           model: Restaurant,
+          as: 'restaurant',
           attributes: ['id', 'name', 'address'],
         },
       ],
@@ -104,18 +104,42 @@ exports.getTablesByRestaurant = async (req, res) => {
 exports.getAvailableTablesByRestaurant = async (req, res) => {
   try {
     const { restaurant_id } = req.params;
-    const { capacity, date, start_time } = req.query;
+    const { capacity, date, start_time, end_time } = req.query;
 
     const restaurant = await Restaurant.findByPk(restaurant_id);
     if (!restaurant) {
       return res.status(404).json({ error: 'Restaurant not found' });
     }
 
+    // Cari table yang punya confirmed/pending reservation yang overlap
+    let bookedTableIds = [];
+    if (date && start_time && end_time) {
+      const { Op } = require('sequelize');
+      const { Reservation } = require('../models');
+      const booked = await Reservation.findAll({
+        where: {
+          restaurant_id,
+          reservation_date: date,
+          status: { [Op.in]: ['pending', 'confirmed'] },
+          [Op.or]: [
+            {
+              start_time: { [Op.lt]: end_time },
+              end_time: { [Op.gt]: start_time },
+            },
+          ],
+        },
+        attributes: ['table_id'],
+      });
+      bookedTableIds = booked.map((r) => r.table_id);
+    }
+
+    const { Op } = require('sequelize');
     const tables = await Table.findAll({
       where: {
         restaurant_id,
         status: 'available',
-        ...(capacity && { capacity: { [require('sequelize').Op.gte]: capacity } }),
+        ...(capacity && { capacity: { [Op.gte]: Number(capacity) } }),
+        ...(bookedTableIds.length > 0 && { id: { [Op.notIn]: bookedTableIds } }),
       },
     });
 
@@ -197,6 +221,46 @@ exports.updateTableStatus = async (req, res) => {
     res.status(200).json({
       message: 'Table status updated successfully',
       table,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.getTableSchedule = async (req, res) => {
+  try {
+    const { restaurant_id } = req.params;
+    const { date } = req.query;
+
+    if (!date) return res.status(400).json({ error: 'Date is required' });
+
+    const restaurant = await Restaurant.findByPk(restaurant_id);
+    if (!restaurant) return res.status(404).json({ error: 'Restaurant not found' });
+
+    const { Reservation } = require('../models');
+    const { Op } = require('sequelize');
+
+    const tables = await Table.findAll({
+      where: { restaurant_id },
+    });
+
+    const reservations = await Reservation.findAll({
+      where: {
+        restaurant_id,
+        reservation_date: date,
+        status: { [Op.in]: ['pending', 'confirmed'] },
+      },
+      attributes: ['table_id', 'start_time', 'end_time', 'status'],
+    });
+
+    res.status(200).json({
+      message: 'Schedule retrieved successfully',
+      restaurant: {
+        opening_time: restaurant.opening_time,
+        closing_time: restaurant.closing_time,
+      },
+      tables,
+      reservations,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

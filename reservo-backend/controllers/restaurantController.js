@@ -1,11 +1,13 @@
-const Restaurant = require('../models/Restaurants');
-const Table = require('../models/Table');
-const User = require('../models/User');
+const { Restaurant, Table, User } = require('../models');
 
 // Create restaurant (admin only)
 exports.createRestaurant = async (req, res) => {
   try {
     const { name, description, address, city, cuisine, phone, opening_time, closing_time, owner_id } = req.body;
+
+    if (!owner_id) {
+      return res.status(400).json({ error: 'owner_id is required' });
+    }
 
     const restaurant = await Restaurant.create({
       name,

@@ -5,17 +5,14 @@ const reservationController = require('../controllers/reservationController');
 // Reservation CRUD routes
 router.post('/', reservationController.createReservation);
 router.get('/', reservationController.getAllReservations);
+
+// Specific routes HARUS di atas /:id
+router.get('/customer/:customer_id', reservationController.getReservationsByCustomer);
+router.get('/restaurant/:restaurant_id', reservationController.getReservationsByRestaurant);
+
 router.get('/:id', reservationController.getReservationById);
 router.put('/:id', reservationController.updateReservation);
 router.delete('/:id', reservationController.deleteReservation);
-
-// Reservation by customer
-router.get('/customer/:customer_id', reservationController.getReservationsByCustomer);
-
-// Reservation by restaurant
-router.get('/restaurant/:restaurant_id', reservationController.getReservationsByRestaurant);
-
-// Reservation status routes
 router.patch('/:id/confirm', reservationController.confirmReservation);
 router.patch('/:id/reject', reservationController.rejectReservation);
 router.patch('/:id/cancel', reservationController.cancelReservation);

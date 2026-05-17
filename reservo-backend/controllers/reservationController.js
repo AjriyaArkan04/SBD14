@@ -1,7 +1,4 @@
-const Reservation = require('../models/Reservation');
-const User = require('../models/User');
-const Restaurant = require('../models/Restaurants');
-const Table = require('../models/Table');
+const { Reservation, User, Restaurant, Table } = require('../models');
 const { Op } = require('sequelize');
 
 // Create reservation
@@ -32,6 +29,7 @@ exports.createReservation = async (req, res) => {
       return res.status(400).json({ error: 'Table capacity is not enough for the guest count' });
     }
 
+
     // Check for conflicting reservations
     const conflictingReservation = await Reservation.findOne({
       where: {
@@ -51,6 +49,15 @@ exports.createReservation = async (req, res) => {
       return res.status(409).json({ error: 'Table is already reserved for the selected time' });
     }
 
+    // Cek H atau H-1 vs H-2+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const bookingDate = new Date(reservation_date);
+    bookingDate.setHours(0, 0, 0, 0);
+    const diffDays = (bookingDate - today) / (1000 * 60 * 60 * 24);
+
+    const isAutoConfirm = diffDays >= 2;
+
     const reservation = await Reservation.create({
       customer_id,
       restaurant_id,
@@ -60,7 +67,22 @@ exports.createReservation = async (req, res) => {
       end_time,
       guest_count,
       special_request,
-      status: 'pending',
+      status: isAutoConfirm ? 'confirmed' : 'pending',
+      ...(isAutoConfirm && { confirmed_at: new Date() }),
+    });
+
+    // Auto-update table hanya kalau langsung confirmed
+    if (isAutoConfirm) {
+      await Table.update(
+        { status: 'reserved' },
+        { where: { id: table_id } }
+      );
+    }
+
+    res.status(201).json({
+      message: 'Reservation created successfully',
+      reservation,
+      auto_confirmed: isAutoConfirm,
     });
 
     res.status(201).json({
@@ -79,15 +101,18 @@ exports.getAllReservations = async (req, res) => {
       include: [
         {
           model: User,
+          as: 'User',
           attributes: ['id', 'name', 'email'],
         },
         {
           model: Restaurant,
+          as: 'Restaurant',
           attributes: ['id', 'name', 'address'],
         },
         {
           model: Table,
-          attributes: ['id', 'table_number', 'capacity'],
+          as: 'Table',
+          attributes: ['id', 'table_number', 'capacity', 'location'],
         },
       ],
     });
@@ -110,14 +135,17 @@ exports.getReservationById = async (req, res) => {
       include: [
         {
           model: User,
+          as: 'User',
           attributes: ['id', 'name', 'email', 'phone'],
         },
         {
           model: Restaurant,
+          as: 'Restaurant',
           attributes: ['id', 'name', 'address', 'city'],
         },
         {
           model: Table,
+          as: 'Table',
           attributes: ['id', 'table_number', 'capacity', 'location'],
         },
       ],
@@ -151,10 +179,12 @@ exports.getReservationsByCustomer = async (req, res) => {
       include: [
         {
           model: Restaurant,
+          as: 'Restaurant',
           attributes: ['id', 'name', 'address', 'city'],
         },
         {
           model: Table,
+          as: 'Table',
           attributes: ['id', 'table_number', 'capacity'],
         },
       ],
@@ -185,11 +215,13 @@ exports.getReservationsByRestaurant = async (req, res) => {
       include: [
         {
           model: User,
+          as: 'User',
           attributes: ['id', 'name', 'email'],
         },
         {
           model: Table,
-          attributes: ['id', 'table_number', 'capacity'],
+          as: 'Table',
+          attributes: ['id', 'table_number', 'capacity', 'location'],
         },
       ],
       order: [['reservation_date', 'DESC']],
@@ -222,6 +254,12 @@ exports.confirmReservation = async (req, res) => {
     reservation.confirmed_at = new Date();
     await reservation.save();
 
+    // Auto-update table status jadi reserved
+    await Table.update(
+      { status: 'reserved' },
+      { where: { id: reservation.table_id } }
+    );
+
     res.status(200).json({
       message: 'Reservation confirmed successfully',
       reservation,
@@ -237,6 +275,10 @@ exports.rejectReservation = async (req, res) => {
     const { id } = req.params;
     const { rejection_reason } = req.body;
 
+    if (!rejection_reason || !rejection_reason.trim()) {
+      return res.status(400).json({ error: 'Rejection reason is required' });
+    }
+
     const reservation = await Reservation.findByPk(id);
     if (!reservation) {
       return res.status(404).json({ error: 'Reservation not found' });
@@ -247,7 +289,7 @@ exports.rejectReservation = async (req, res) => {
     }
 
     reservation.status = 'rejected';
-    reservation.rejection_reason = rejection_reason;
+    reservation.rejection_reason = rejection_reason.trim();
     await reservation.save();
 
     res.status(200).json({
