@@ -3,7 +3,7 @@ import {
   ArrowRight, Calendar, Bell, CheckCircle, Clock, Heart,
   LayoutDashboard, LogOut, Settings, Star, Table2, User, Users,
   X, XCircle, Utensils, Filter, Plus, Minus, Eye, EyeOff, AlertCircle,
-  MapPin, Edit2, Trash2, RefreshCw, CheckCircle2,
+  MapPin, Edit2, Trash2, RefreshCw, CheckCircle2, Menu,
 } from "lucide-react";
 import { api } from "../api/client";
 
@@ -56,6 +56,7 @@ type Reservation = {
   guest_count: number;
   status: "pending" | "confirmed" | "rejected" | "cancelled" | "completed";
   special_request?: string;
+  rejection_reason?: string;
 };
 
 type ReservationWithIncludes = Reservation & {
@@ -109,7 +110,7 @@ function toast(type: ToastType, message: string) {
 
 function ToastContainer({ toasts }: { toasts: ToastMsg[] }) {
   return (
-    <div className="fixed bottom-6 right-6 z-[100] flex flex-col gap-2 pointer-events-none">
+    <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none max-w-[calc(100vw-2rem)]">
       {toasts.map((t) => (
         <div
           key={t.id}
@@ -124,7 +125,7 @@ function ToastContainer({ toasts }: { toasts: ToastMsg[] }) {
           {t.type === "success" && <CheckCircle2 className="w-4 h-4 shrink-0" />}
           {t.type === "error" && <AlertCircle className="w-4 h-4 shrink-0" />}
           {t.type === "info" && <Bell className="w-4 h-4 shrink-0" />}
-          <span>{t.message}</span>
+          <span className="line-clamp-2">{t.message}</span>
         </div>
       ))}
     </div>
@@ -170,7 +171,7 @@ function ConfirmModal({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-card rounded-sm p-8 max-w-sm w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-card rounded-sm p-6 md:p-8 max-w-sm w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-5 ${danger ? "bg-red-50 border border-red-200" : "bg-amber-50 border border-amber-200"}`}>
           <AlertCircle className={`w-6 h-6 ${danger ? "text-red-500" : "text-amber-600"}`} />
         </div>
@@ -205,14 +206,14 @@ function BookingModal({
   const [guests, setGuests] = useState(2);
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
-  const [fetchingTables, setFetchingTables] = useState(true);
+  const [fetchingTables, setFetchingTables] = useState(false);
   const [done, setDone] = useState(false);
   const [isAutoConfirm, setIsAutoConfirm] = useState(false);
   const [selectedDate, setSelectedDate] = useState("");
   const [sessions, setSessions] = useState<{ start: string; end: string; label: string }[]>([]);
   const [scheduleData, setScheduleData] = useState<{
-  reservations: { table_id: string; start_time: string; end_time: string; status: string }[];
-} | null>(null);
+    reservations: { table_id: string; start_time: string; end_time: string; status: string }[];
+  } | null>(null);
   const [selectedSessions, setSelectedSessions] = useState<number[]>([]);
 
   const fetchTables = useCallback(async (date: string, start?: string, end?: string) => {
@@ -233,41 +234,15 @@ function BookingModal({
     }
   }, [restaurant.id]);
 
-  // Generate sesi 90 menit dari jam buka sampai tutup
-  const generateSessions = (open: string, close: string) => {
-    const result: { start: string; end: string; label: string }[] = [];
-    const toMins = (t: string) => {
-      const [h, m] = t.slice(0, 5).split(":").map(Number);
-      return h * 60 + m;
-    };
-    const toStr = (mins: number) => {
-      const h = Math.floor(mins / 60).toString().padStart(2, "0");
-      const m = (mins % 60).toString().padStart(2, "0");
-      return `${h}:${m}`;
-    };
-    let cur = toMins(open);
-    const end = toMins(close);
-    while (cur + 90 <= end) {
-      result.push({ start: toStr(cur), end: toStr(cur + 90), label: `${toStr(cur)} – ${toStr(cur + 90)}` });
-      cur += 90;
-    }
-    return result;
-  };
-
-  // Toggle sesi — harus berurutan
   const toggleSession = (idx: number) => {
     setSelectedSessions((prev) => {
-      if (prev.includes(idx)) {
-        // Kalau deselect, trim sesi setelah idx yang di-deselect
-        return prev.filter((i) => i < idx);
-      }
-      // Hanya boleh pilih kalau berurutan
+      if (prev.includes(idx)) return prev.filter((i) => i < idx);
       const expected = prev.length === 0 ? idx : Math.max(...prev) + 1;
       if (idx !== expected) return prev;
       return [...prev, idx].sort((a, b) => a - b);
     });
   };
-  
+
   const isSessionUnavailable = (idx: number) => {
     if (!scheduleData || sessions.length === 0) return false;
     const s = sessions[idx];
@@ -277,7 +252,6 @@ function BookingModal({
       if (t.status === "maintenance") return false;
       const hasConflict = scheduleData.reservations.some((r) => {
         if (r.table_id !== t.id) return false;
-        // Normalize ke HH:MM semua
         const rStart = r.start_time.slice(0, 5);
         const rEnd = r.end_time.slice(0, 5);
         const sStart = s.start.slice(0, 5);
@@ -298,7 +272,6 @@ function BookingModal({
       const sortedSessions = [...selectedSessions].sort((a, b) => a - b);
       const startTime = sessions[sortedSessions[0]].start;
       const endTime = sessions[sortedSessions[sortedSessions.length - 1]].end;
-
       const response = await api.post("/api/reservations", {
         customer_id: user.id,
         restaurant_id: restaurant.id,
@@ -322,7 +295,7 @@ function BookingModal({
   if (done) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
-        <div className="bg-card rounded-sm p-12 max-w-sm w-full text-center shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="bg-card rounded-sm p-8 md:p-12 max-w-sm w-full text-center shadow-2xl" onClick={(e) => e.stopPropagation()}>
           <div className="w-16 h-16 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center mx-auto mb-6">
             <CheckCircle className="w-8 h-8 text-[#059669]" />
           </div>
@@ -340,11 +313,11 @@ function BookingModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-card rounded-sm shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()} style={{ scrollbarWidth: "none" }}>
-        <div className="flex items-center justify-between px-6 py-5 border-b border-border">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-card rounded-t-lg sm:rounded-sm shadow-2xl w-full sm:max-w-lg max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()} style={{ scrollbarWidth: "none" }}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-card z-10">
           <div>
-            <h3 className="font-display text-xl text-foreground">{restaurant.name}</h3>
+            <h3 className="font-display text-lg text-foreground">{restaurant.name}</h3>
             <p className="text-xs text-muted-foreground font-mono mt-0.5">{restaurant.cuisine} · {restaurant.city}</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-sm flex items-center justify-center hover:bg-muted transition-colors">
@@ -352,34 +325,7 @@ function BookingModal({
           </button>
         </div>
 
-        <div className="p-6 space-y-5">
-          {/* Table */}
-          <div>
-            <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-2">Available Table</label>
-            {!selectedDate ? (
-              <p className="text-sm text-muted-foreground font-mono">Please select a date first.</p>
-            ) : selectedSessions.length === 0 ? (
-              <p className="text-sm text-muted-foreground font-mono">Please select a session to see available tables.</p>
-            ) : fetchingTables ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground py-2"><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Loading tables...</div>
-            ) : tables.length === 0 ? (
-              <p className="text-sm text-red-500 font-mono">No available tables for the selected session.</p>
-            ) : (
-              <div className="grid grid-cols-3 gap-2">
-                {tables.map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() => setSelectedTable(t.id)}
-                    className={`text-xs py-2.5 px-3 rounded-sm border transition-all text-left ${selectedTable === t.id ? "border-[#059669] bg-[#059669]/10 text-[#059669]" : "border-border text-foreground hover:border-[#059669]/50"}`}
-                  >
-                    <p className="font-mono font-medium">{t.table_number}</p>
-                    <p className="text-muted-foreground mt-0.5">{t.capacity} seats{t.location ? ` · ${t.location}` : ""}</p>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
+        <div className="p-5 space-y-5">
           {/* Date */}
           <div>
             <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-2">Date</label>
@@ -397,11 +343,8 @@ function BookingModal({
                   const generated = generateSessions(restaurant.opening_time, restaurant.closing_time);
                   setSessions(generated);
                 }
-                // Fetch schedule untuk cek sesi yang sudah di-book
                 try {
-                  const res = await api.get(`/api/tables/restaurant/${restaurant.id}/schedule`, {
-                    params: { date },
-                  });
+                  const res = await api.get(`/api/tables/restaurant/${restaurant.id}/schedule`, { params: { date } });
                   setScheduleData(res.data);
                 } catch {
                   setScheduleData(null);
@@ -466,6 +409,33 @@ function BookingModal({
             </div>
           )}
 
+          {/* Available Tables */}
+          <div>
+            <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-2">Available Table</label>
+            {!selectedDate ? (
+              <p className="text-sm text-muted-foreground font-mono">Please select a date first.</p>
+            ) : selectedSessions.length === 0 ? (
+              <p className="text-sm text-muted-foreground font-mono">Please select a session to see available tables.</p>
+            ) : fetchingTables ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-2"><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Loading tables...</div>
+            ) : tables.length === 0 ? (
+              <p className="text-sm text-red-500 font-mono">No available tables for the selected session.</p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {tables.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setSelectedTable(t.id)}
+                    className={`text-xs py-2.5 px-3 rounded-sm border transition-all text-left ${selectedTable === t.id ? "border-[#059669] bg-[#059669]/10 text-[#059669]" : "border-border text-foreground hover:border-[#059669]/50"}`}
+                  >
+                    <p className="font-mono font-medium">{t.table_number}</p>
+                    <p className="text-muted-foreground mt-0.5">{t.capacity} seats{t.location ? ` · ${t.location}` : ""}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Guests */}
           <div>
             <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-2">Party Size</label>
@@ -491,7 +461,7 @@ function BookingModal({
 
           <button
             onClick={handleBook}
-            disabled={!canSubmit || loading || tables.length === 0}
+            disabled={!canSubmit || loading}
             className="w-full bg-[#059669] text-white text-sm font-medium py-3 rounded-sm hover:bg-[#047857] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : "Request Reservation"}
@@ -512,7 +482,7 @@ function LandingPage({ onNavigate }: { onNavigate: (v: View) => void }) {
   return (
     <div className="min-h-screen bg-background">
       <nav className="fixed top-0 inset-x-0 z-50 border-b border-white/8 bg-[#141412]/80 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Utensils className="w-5 h-5 text-[#059669]" />
             <span className="font-display text-xl text-white tracking-tight">Reservo</span>
@@ -523,24 +493,24 @@ function LandingPage({ onNavigate }: { onNavigate: (v: View) => void }) {
             ))}
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => onNavigate("login")} className="text-sm text-white/70 hover:text-white transition-colors px-4 py-2">Login</button>
-            <button onClick={() => onNavigate("register")} className="text-sm bg-[#059669] text-white px-5 py-2.5 rounded-sm hover:bg-[#047857] transition-colors">Register</button>
+            <button onClick={() => onNavigate("login")} className="text-sm text-white/70 hover:text-white transition-colors px-3 md:px-4 py-2">Login</button>
+            <button onClick={() => onNavigate("register")} className="text-sm bg-[#059669] text-white px-4 md:px-5 py-2.5 rounded-sm hover:bg-[#047857] transition-colors">Register</button>
           </div>
         </div>
       </nav>
 
-      <section className="relative h-screen flex items-end pb-24 md:pb-0 md:items-center justify-center overflow-hidden">
+      <section className="relative min-h-screen flex items-end pb-16 md:pb-0 md:items-center justify-center overflow-hidden">
         <div className="absolute inset-0 bg-[#141412]">
           <img src="https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=1920&h=1080&fit=crop&auto=format" alt="Fine dining" className="w-full h-full object-cover opacity-45" />
           <div className="absolute inset-0 bg-gradient-to-t from-[#141412] via-[#141412]/30 to-[#141412]/20" />
         </div>
-        <div className="relative z-10 w-full max-w-5xl mx-auto px-6 text-center">
-          <p className="text-[#059669] text-[10px] font-mono tracking-[0.3em] uppercase mb-8">Reserve · Dine · Experience</p>
-          <h1 className="font-display text-5xl md:text-7xl text-white font-light leading-[1.08] mb-6">
+        <div className="relative z-10 w-full max-w-5xl mx-auto px-4 md:px-6 text-center">
+          <p className="text-[#059669] text-[10px] font-mono tracking-[0.3em] uppercase mb-6 md:mb-8">Reserve · Dine · Experience</p>
+          <h1 className="font-display text-4xl md:text-7xl text-white font-light leading-[1.08] mb-5 md:mb-6">
             Every great meal<br />
             <em className="not-italic text-[#059669]">begins with a reservation</em>
           </h1>
-          <p className="text-white/50 text-base md:text-lg mb-12 max-w-xl mx-auto leading-relaxed">
+          <p className="text-white/50 text-sm md:text-lg mb-8 md:mb-12 max-w-xl mx-auto leading-relaxed">
             Discover the finest restaurants and secure your table in seconds. No calls, no waiting, just dining.
           </p>
           <div className="bg-white shadow-2xl rounded-sm flex flex-col md:flex-row max-w-3xl mx-auto overflow-hidden">
@@ -612,8 +582,12 @@ function LoginPage({ onNavigate, onLogin }: { onNavigate: (v: View) => void; onL
           <h2 className="font-display text-4xl text-white font-light leading-snug mb-4">Your next great meal<br />is one click away.</h2>
         </div>
       </div>
-      <div className="flex-1 flex items-center justify-center p-8">
+      <div className="flex-1 flex items-center justify-center p-6 md:p-8">
         <div className="w-full max-w-md">
+          <div className="flex items-center gap-2 mb-8 lg:hidden">
+            <Utensils className="w-5 h-5 text-[#059669]" />
+            <span className="font-display text-xl text-foreground">Reservo</span>
+          </div>
           <h1 className="font-display text-3xl text-foreground mb-2">Sign in</h1>
           <p className="text-muted-foreground text-sm mb-8">Don't have an account?{" "}<button onClick={() => onNavigate("register")} className="text-[#059669] hover:underline font-medium">Register</button></p>
           {error && <div className="mb-5 px-4 py-3 rounded-sm bg-red-50 border border-red-200 flex items-center gap-2"><AlertCircle className="w-4 h-4 text-red-500 shrink-0" /><p className="text-red-600 text-sm">{error}</p></div>}
@@ -685,8 +659,12 @@ function RegisterPage({ onNavigate, onLogin }: { onNavigate: (v: View) => void; 
           <h2 className="font-display text-4xl text-white font-light leading-snug mb-4">Start your dining<br />journey today.</h2>
         </div>
       </div>
-      <div className="flex-1 flex items-center justify-center p-8 overflow-y-auto">
+      <div className="flex-1 flex items-center justify-center p-6 md:p-8 overflow-y-auto">
         <div className="w-full max-w-md py-8">
+          <div className="flex items-center gap-2 mb-8 lg:hidden">
+            <Utensils className="w-5 h-5 text-[#059669]" />
+            <span className="font-display text-xl text-foreground">Reservo</span>
+          </div>
           <h1 className="font-display text-3xl text-foreground mb-2">Create account</h1>
           <p className="text-muted-foreground text-sm mb-8">Already have an account?{" "}<button onClick={() => onNavigate("login")} className="text-[#059669] hover:underline font-medium">Sign in</button></p>
           {error && <div className="mb-5 px-4 py-3 rounded-sm bg-red-50 border border-red-200 flex items-center gap-2"><AlertCircle className="w-4 h-4 text-red-500 shrink-0" /><p className="text-red-600 text-sm">{error}</p></div>}
@@ -729,10 +707,10 @@ function CustomerDashboard({ onNavigate, user }: { onNavigate: (v: View) => void
   const [cancelTarget, setCancelTarget] = useState<ReservationWithIncludes | null>(null);
   const [loadingRestaurants, setLoadingRestaurants] = useState(true);
   const [loadingReservations, setLoadingReservations] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const pendingCount = reservations.filter((r) => r.status === "pending").length;
 
-  // Fetch restaurants
   useEffect(() => {
     const load = async () => {
       try {
@@ -744,7 +722,6 @@ function CustomerDashboard({ onNavigate, user }: { onNavigate: (v: View) => void
     load();
   }, []);
 
-  // Fetch reservations when on that tab
   const loadReservations = useCallback(async () => {
     if (!user?.id) return;
     setLoadingReservations(true);
@@ -784,23 +761,30 @@ function CustomerDashboard({ onNavigate, user }: { onNavigate: (v: View) => void
   const displayName = user?.name ?? "Guest";
   const displayInitials = user?.initials ?? "G";
 
+  const navItems: { id: CustomerSection; label: string }[] = [
+    { id: "discover", label: "Discover" },
+    { id: "reservations", label: "My Reservations" },
+    { id: "favorites", label: "Favorites" },
+  ];
+
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-40 bg-card border-b border-border">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
           <button onClick={() => onNavigate("landing")} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <Utensils className="w-5 h-5 text-[#059669]" />
             <span className="font-display text-xl text-foreground tracking-tight">Reservo</span>
           </button>
+          {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-6">
-            {([{ id: "discover", label: "Discover" }, { id: "reservations", label: "My Reservations" }, { id: "favorites", label: "Favorites" }] as { id: CustomerSection; label: string }[]).map(({ id, label }) => (
+            {navItems.map(({ id, label }) => (
               <button key={id} onClick={() => setActiveSection(id)} className={`text-sm transition-colors relative ${activeSection === id ? "text-[#059669] font-medium" : "text-muted-foreground hover:text-foreground"}`}>
                 {label}
                 {id === "reservations" && pendingCount > 0 && <span className="absolute -top-1.5 -right-3 w-4 h-4 bg-[#059669] rounded-full text-[9px] text-white flex items-center justify-center font-mono">{pendingCount}</span>}
               </button>
             ))}
           </nav>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <button onClick={() => setActiveSection("reservations")} className="w-9 h-9 flex items-center justify-center rounded-sm hover:bg-muted transition-colors relative">
               <Bell className="w-4 h-4 text-muted-foreground" />
               {pendingCount > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#059669] rounded-full" />}
@@ -808,20 +792,35 @@ function CustomerDashboard({ onNavigate, user }: { onNavigate: (v: View) => void
             <button onClick={() => { localStorage.removeItem("auth_token"); onNavigate("landing"); }} className="w-9 h-9 rounded-sm bg-[#059669] flex items-center justify-center hover:bg-[#047857] transition-colors" title="Sign out">
               <span className="text-white text-xs font-medium">{displayInitials}</span>
             </button>
+            {/* Mobile menu button */}
+            <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden w-9 h-9 flex items-center justify-center rounded-sm hover:bg-muted transition-colors">
+              <Menu className="w-4 h-4 text-muted-foreground" />
+            </button>
           </div>
         </div>
+        {/* Mobile nav dropdown */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-border bg-card px-4 py-2">
+            {navItems.map(({ id, label }) => (
+              <button key={id} onClick={() => { setActiveSection(id); setMobileMenuOpen(false); }} className={`w-full text-left text-sm py-3 border-b border-border last:border-0 flex items-center justify-between ${activeSection === id ? "text-[#059669] font-medium" : "text-muted-foreground"}`}>
+                {label}
+                {id === "reservations" && pendingCount > 0 && <span className="w-5 h-5 bg-[#059669] rounded-full text-[9px] text-white flex items-center justify-center font-mono">{pendingCount}</span>}
+              </button>
+            ))}
+          </div>
+        )}
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-10">
-        <div className="mb-8">
+      <main className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-10">
+        <div className="mb-6 md:mb-8">
           <p className="text-muted-foreground text-sm mb-1">{activeSection === "discover" ? "Good evening," : activeSection === "reservations" ? "Your bookings," : "Your saved restaurants,"}</p>
-          <h1 className="font-display text-3xl text-foreground">{displayName}</h1>
+          <h1 className="font-display text-2xl md:text-3xl text-foreground">{displayName}</h1>
         </div>
 
         {/* ── DISCOVER ── */}
         {activeSection === "discover" && (
           <>
-            <div className="mb-8">
+            <div className="mb-6 md:mb-8">
               <div className="flex flex-col md:flex-row gap-3 mb-4">
                 <div className="flex items-center gap-3 flex-1 bg-card border border-border rounded-sm px-4 py-3 focus-within:border-[#059669] transition-colors">
                   <Filter className="w-4 h-4 text-muted-foreground shrink-0" />
@@ -844,9 +843,9 @@ function CustomerDashboard({ onNavigate, user }: { onNavigate: (v: View) => void
             ) : filtered.length === 0 ? (
               <div className="col-span-12 py-20 text-center text-muted-foreground text-sm">No restaurants available yet.</div>
             ) : (
-              <div className="grid grid-cols-12 gap-5 mb-16">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-16">
                 {filtered.map((r) => (
-                  <div key={r.id} className="col-span-12 sm:col-span-6 lg:col-span-4 bg-card border border-border rounded-sm overflow-hidden group hover:border-[#059669]/40 hover:shadow-md transition-all">
+                  <div key={r.id} className="bg-card border border-border rounded-sm overflow-hidden group hover:border-[#059669]/40 hover:shadow-md transition-all">
                     <div className="relative h-40 bg-muted overflow-hidden">
                       <div className="absolute inset-0 flex items-center justify-center text-muted-foreground/20">
                         <Utensils className="w-12 h-12" />
@@ -883,12 +882,12 @@ function CustomerDashboard({ onNavigate, user }: { onNavigate: (v: View) => void
           </>
         )}
 
-       {/* ── MY RESERVATIONS ── */}
+        {/* ── MY RESERVATIONS ── */}
         {activeSection === "reservations" && (
           <div>
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="font-display text-2xl text-foreground">My Reservations</h2>
+                <h2 className="font-display text-xl md:text-2xl text-foreground">My Reservations</h2>
                 <p className="text-muted-foreground text-sm mt-1">Track and manage your upcoming bookings</p>
               </div>
               <div className="flex items-center gap-3">
@@ -905,8 +904,50 @@ function CustomerDashboard({ onNavigate, user }: { onNavigate: (v: View) => void
                 <button onClick={() => setActiveSection("discover")} className="mt-4 text-sm text-[#059669] hover:underline">Discover restaurants →</button>
               </div>
             ) : (
-              <div className="bg-card border border-border rounded-sm overflow-hidden">
-                <div className="grid grid-cols-12 gap-4 px-6 py-3 bg-muted border-b border-border">
+              <div className="space-y-3">
+                {reservations.map((res) => (
+                  <div key={res.id} className="bg-card border border-border rounded-sm overflow-hidden">
+                    {/* Mobile card layout */}
+                    <div className="p-4 md:hidden">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <p className="font-medium text-sm text-foreground">{res.Restaurant?.name ?? "—"}</p>
+                          <p className="text-xs text-muted-foreground font-mono mt-0.5">{res.Table?.table_number ?? "—"} · {res.guest_count} guests</p>
+                        </div>
+                        <StatusBadge status={res.status} />
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground font-mono mb-3">
+                        <span>{res.reservation_date}</span>
+                        <span>{res.start_time?.slice(0,5)} – {res.end_time?.slice(0,5)}</span>
+                      </div>
+                      {(res.status === "pending" || res.status === "confirmed") && (
+                        <button onClick={() => setCancelTarget(res)} className="text-xs text-red-500 font-mono border border-red-200 px-3 py-1.5 rounded-sm hover:bg-red-50 transition-colors">Cancel</button>
+                      )}
+                    </div>
+                    {/* Desktop table layout */}
+                    <div className="hidden md:grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-muted/40 transition-colors">
+                      <div className="col-span-3"><p className="font-medium text-sm text-foreground truncate">{res.Restaurant?.name ?? "—"}</p></div>
+                      <div className="col-span-2"><p className="text-sm text-foreground font-mono">{res.reservation_date}</p></div>
+                      <div className="col-span-2"><p className="text-xs text-muted-foreground font-mono">{res.start_time?.slice(0,5)} – {res.end_time?.slice(0,5)}</p></div>
+                      <div className="col-span-1"><p className="text-sm font-mono text-foreground">{res.guest_count}</p></div>
+                      <div className="col-span-2"><p className="text-xs font-mono text-muted-foreground">{res.Table?.table_number ?? "—"}</p></div>
+                      <div className="col-span-1"><StatusBadge status={res.status} /></div>
+                      <div className="col-span-1 flex justify-end">
+                        {(res.status === "pending" || res.status === "confirmed") && (
+                          <button onClick={() => setCancelTarget(res)} className="text-xs text-muted-foreground hover:text-red-500 transition-colors font-mono">Cancel</button>
+                        )}
+                      </div>
+                    </div>
+                    {res.status === "rejected" && res.rejection_reason && (
+                      <div className="px-4 md:px-6 py-3 bg-red-50 border-t border-red-100">
+                        <p className="text-[10px] font-mono uppercase tracking-widest text-red-400 mb-0.5">Rejection Reason</p>
+                        <p className="text-xs text-red-600">{res.rejection_reason}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {/* Desktop header row */}
+                <div className="hidden md:grid grid-cols-12 gap-4 px-6 py-3 bg-muted border border-border rounded-sm -order-1 mb-0">
                   <p className="col-span-3 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Restaurant</p>
                   <p className="col-span-2 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Date</p>
                   <p className="col-span-2 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Time</p>
@@ -914,31 +955,6 @@ function CustomerDashboard({ onNavigate, user }: { onNavigate: (v: View) => void
                   <p className="col-span-2 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Table</p>
                   <p className="col-span-1 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Status</p>
                   <p className="col-span-1 text-[10px] font-mono uppercase tracking-widest text-muted-foreground text-right">Action</p>
-                </div>
-                <div className="divide-y divide-border">
-                  {reservations.map((res) => (
-                    <div key={res.id}>
-                      <div className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-muted/40 transition-colors">
-                        <div className="col-span-3"><p className="font-medium text-sm text-foreground truncate">{res.Restaurant?.name ?? "—"}</p></div>
-                        <div className="col-span-2"><p className="text-sm text-foreground font-mono">{res.reservation_date}</p></div>
-                        <div className="col-span-2"><p className="text-xs text-muted-foreground font-mono">{res.start_time?.slice(0,5)} – {res.end_time?.slice(0,5)}</p></div>
-                        <div className="col-span-1"><p className="text-sm font-mono text-foreground">{res.guest_count}</p></div>
-                        <div className="col-span-2"><p className="text-xs font-mono text-muted-foreground">{res.Table?.table_number ?? "—"}</p></div>
-                        <div className="col-span-1"><StatusBadge status={res.status} /></div>
-                        <div className="col-span-1 flex justify-end">
-                          {(res.status === "pending" || res.status === "confirmed") && (
-                            <button onClick={() => setCancelTarget(res)} className="text-xs text-muted-foreground hover:text-red-500 transition-colors font-mono">Cancel</button>
-                          )}
-                        </div>
-                      </div>
-                      {res.status === "rejected" && res.rejection_reason && (
-                        <div className="px-6 py-3 bg-red-50 border-t border-red-100">
-                          <p className="text-[10px] font-mono uppercase tracking-widest text-red-400 mb-0.5">Rejection Reason</p>
-                          <p className="text-xs text-red-600">{res.rejection_reason}</p>
-                        </div>
-                      )}
-                    </div>
-                  ))}
                 </div>
               </div>
             )}
@@ -949,7 +965,7 @@ function CustomerDashboard({ onNavigate, user }: { onNavigate: (v: View) => void
         {activeSection === "favorites" && (
           <div>
             <div className="mb-6">
-              <h2 className="font-display text-2xl text-foreground">Saved Restaurants</h2>
+              <h2 className="font-display text-xl md:text-2xl text-foreground">Saved Restaurants</h2>
               <p className="text-muted-foreground text-sm mt-1">{favorites.length} restaurant{favorites.length !== 1 ? "s" : ""} saved</p>
             </div>
             {favorites.length === 0 ? (
@@ -959,9 +975,9 @@ function CustomerDashboard({ onNavigate, user }: { onNavigate: (v: View) => void
                 <button onClick={() => setActiveSection("discover")} className="mt-4 text-sm text-[#059669] hover:underline">Discover restaurants →</button>
               </div>
             ) : (
-              <div className="grid grid-cols-12 gap-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                 {restaurants.filter((r) => favorites.includes(r.id)).map((r) => (
-                  <div key={r.id} className="col-span-12 sm:col-span-6 lg:col-span-4 bg-card border border-border rounded-sm overflow-hidden">
+                  <div key={r.id} className="bg-card border border-border rounded-sm overflow-hidden">
                     <div className="p-5">
                       <div className="flex items-start justify-between">
                         <div><h3 className="font-display text-lg text-foreground">{r.name}</h3><p className="text-xs text-muted-foreground font-mono mt-0.5">{r.cuisine} · {r.city}</p></div>
@@ -1007,22 +1023,18 @@ function AdminDashboard({ onNavigate, user }: { onNavigate: (v: View) => void; u
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [tables, setTables] = useState<Table[]>([]);
   const [requests, setRequests] = useState<ReservationWithIncludes[]>([]);
-  const [tableFilter, setTableFilter] = useState("All");
-  const [restaurantFilter, setRestaurantFilter] = useState("All");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Add Restaurant form state
   const emptyRestaurant = { name: "", description: "", address: "", city: "", cuisine: "", phone: "", opening_time: "08:00", closing_time: "22:00" };
   const [newRestaurant, setNewRestaurant] = useState(emptyRestaurant);
   const [addingRestaurant, setAddingRestaurant] = useState(false);
   const [restaurantError, setRestaurantError] = useState("");
 
-  // Add Table form state
   const emptyTable = { restaurant_id: "", table_number: "", capacity: 2, status: "available" as Table["status"], location: "" };
   const [newTable, setNewTable] = useState(emptyTable);
   const [addingTable, setAddingTable] = useState(false);
   const [tableError, setTableError] = useState("");
 
-  // Action states
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [rejectTarget, setRejectTarget] = useState<ReservationWithIncludes | null>(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -1031,29 +1043,20 @@ function AdminDashboard({ onNavigate, user }: { onNavigate: (v: View) => void; u
 
   const pendingCount = requests.filter((r) => r.status === "pending").length;
   const availableCount = tables.filter((t) => t.status === "available").length;
-  const reservedCount = tables.filter((t) => t.status === "reserved").length;
-
-  // Filtered tables (by status + restaurant)
-  const filteredTables = tables.filter((t) => {
-    const statusMatch = tableFilter === "All" || t.status === tableFilter.toLowerCase();
-    const restMatch = restaurantFilter === "All" || t.restaurant_id === restaurantFilter;
-    return statusMatch && restMatch;
-  });
 
   const displayName = user?.name ?? "Restaurant Manager";
   const displayInitials = user?.initials ?? "RM";
 
   const handleTableStatusChange = async (t: Table, status: Table["status"]) => {
-  try {
-    await api.patch(`/api/tables/${t.id}/status`, { status });
-    setTables((prev) => prev.map((x) => x.id === t.id ? { ...x, status } : x));
-    toast("success", `Table ${t.table_number} status updated to ${status}.`);
-  } catch (err: any) {
-    toast("error", err?.response?.data?.error ?? "Failed to update table status.");
-  }
-};
+    try {
+      await api.patch(`/api/tables/${t.id}/status`, { status });
+      setTables((prev) => prev.map((x) => x.id === t.id ? { ...x, status } : x));
+      toast("success", `Table ${t.table_number} updated to ${status}.`);
+    } catch (err: any) {
+      toast("error", err?.response?.data?.error ?? "Failed to update table status.");
+    }
+  };
 
-  // Load data
   const loadAll = useCallback(async () => {
     try {
       const [rRes, tRes, reqRes] = await Promise.all([
@@ -1064,7 +1067,6 @@ function AdminDashboard({ onNavigate, user }: { onNavigate: (v: View) => void; u
       setRestaurants((rRes.data?.restaurants ?? []) as Restaurant[]);
       setTables((tRes.data?.tables ?? []) as Table[]);
       const allRes = (reqRes.data?.reservations ?? []) as ReservationWithIncludes[];
-      // Show all non-completed, non-cancelled reservations in requests
       setRequests(allRes.filter((r) => !["completed", "cancelled"].includes(r.status)));
     } catch {
       setRestaurants([]); setTables([]); setRequests([]);
@@ -1073,7 +1075,6 @@ function AdminDashboard({ onNavigate, user }: { onNavigate: (v: View) => void; u
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
-  // ── ADD RESTAURANT ──
   const handleAddRestaurant = async () => {
     setRestaurantError("");
     if (!newRestaurant.name.trim()) { setRestaurantError("Restaurant name is required."); return; }
@@ -1105,7 +1106,6 @@ function AdminDashboard({ onNavigate, user }: { onNavigate: (v: View) => void; u
     }
   };
 
-  // ── ADD TABLE ──
   const handleAddTable = async () => {
     setTableError("");
     if (!newTable.restaurant_id) { setTableError("Please select a restaurant."); return; }
@@ -1133,18 +1133,12 @@ function AdminDashboard({ onNavigate, user }: { onNavigate: (v: View) => void; u
     }
   };
 
-  // ── APPROVE RESERVATION → auto-update table to reserved ──
   const handleApprove = async (req: ReservationWithIncludes) => {
     setActionLoading(req.id + "-approve");
     try {
-      // 1. Confirm reservation
       await api.patch(`/api/reservations/${req.id}/confirm`);
-      // 2. Auto-update table status to reserved
-      await api.patch(`/api/tables/${req.table_id}/status`, { status: "reserved" });
-      toast("success", `Reservation confirmed. Table ${req.Table?.table_number ?? ""} marked as reserved.`);
-      // 3. Refresh state
+      toast("success", `Reservation confirmed.`);
       setRequests((prev) => prev.map((r) => r.id === req.id ? { ...r, status: "confirmed" } : r));
-      setTables((prev) => prev.map((t) => t.id === req.table_id ? { ...t, status: "reserved" } : t));
     } catch (err: any) {
       toast("error", err?.response?.data?.error ?? "Failed to confirm reservation.");
     } finally {
@@ -1152,27 +1146,22 @@ function AdminDashboard({ onNavigate, user }: { onNavigate: (v: View) => void; u
     }
   };
 
-  // ── REJECT RESERVATION → table stays available ──
   const handleReject = async (req: ReservationWithIncludes) => {
-  if (!rejectReason.trim()) {
-    toast("error", "Please enter a rejection reason.");
-    return;
-  }
-  setActionLoading(req.id + "-reject");
-  try {
-    await api.patch(`/api/reservations/${req.id}/reject`, { rejection_reason: rejectReason.trim() });
-    toast("success", "Reservation rejected.");
-    setRequests((prev) => prev.map((r) => r.id === req.id ? { ...r, status: "rejected", rejection_reason: rejectReason } : r));
-    setRejectTarget(null);
-    setRejectReason("");
-  } catch (err: any) {
-    toast("error", err?.response?.data?.error ?? "Failed to reject reservation.");
-  } finally {
-    setActionLoading(null);
-  }
-};
+    if (!rejectReason.trim()) { toast("error", "Please enter a rejection reason."); return; }
+    setActionLoading(req.id + "-reject");
+    try {
+      await api.patch(`/api/reservations/${req.id}/reject`, { rejection_reason: rejectReason.trim() });
+      toast("success", "Reservation rejected.");
+      setRequests((prev) => prev.map((r) => r.id === req.id ? { ...r, status: "rejected", rejection_reason: rejectReason } : r));
+      setRejectTarget(null);
+      setRejectReason("");
+    } catch (err: any) {
+      toast("error", err?.response?.data?.error ?? "Failed to reject reservation.");
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
-  // ── DELETE RESTAURANT ──
   const handleDeleteRestaurant = async (r: Restaurant) => {
     try {
       await api.delete(`/api/restaurants/${r.id}`);
@@ -1185,7 +1174,6 @@ function AdminDashboard({ onNavigate, user }: { onNavigate: (v: View) => void; u
     }
   };
 
-  // ── DELETE TABLE ──
   const handleDeleteTable = async (t: Table) => {
     try {
       await api.delete(`/api/tables/${t.id}`);
@@ -1207,8 +1195,13 @@ function AdminDashboard({ onNavigate, user }: { onNavigate: (v: View) => void; u
 
   return (
     <div className="min-h-screen bg-background flex">
+      {/* Mobile sidebar overlay */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-30 bg-black/50 md:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-64 bg-[#141412] fixed top-0 left-0 h-screen flex flex-col z-40">
+      <aside className={`fixed top-0 left-0 h-screen w-64 bg-[#141412] flex flex-col z-40 transition-transform duration-200 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}>
         <div className="px-4 py-5 border-b border-white/8">
           <div className="flex items-center gap-3 px-2">
             <div className="w-9 h-9 rounded-sm bg-[#059669]/20 border border-[#059669]/30 flex items-center justify-center shrink-0"><Utensils className="w-4 h-4 text-[#059669]" /></div>
@@ -1217,7 +1210,7 @@ function AdminDashboard({ onNavigate, user }: { onNavigate: (v: View) => void; u
         </div>
         <nav className="flex-1 px-3 py-4 space-y-0.5">
           {navItems.map(({ id, label, icon: Icon, badge }) => (
-            <button key={id} onClick={() => setActiveSection(id)} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-sm text-sm transition-all group ${activeSection === id ? "bg-[#059669]/15 text-[#059669]" : "text-white/50 hover:text-white hover:bg-white/5"}`}>
+            <button key={id} onClick={() => { setActiveSection(id); setSidebarOpen(false); }} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-sm text-sm transition-all group ${activeSection === id ? "bg-[#059669]/15 text-[#059669]" : "text-white/50 hover:text-white hover:bg-white/5"}`}>
               <div className="flex items-center gap-3">
                 <Icon className={`w-4 h-4 ${activeSection === id ? "text-[#059669]" : "text-white/40 group-hover:text-white/70"}`} />
                 <span>{label}</span>
@@ -1237,10 +1230,13 @@ function AdminDashboard({ onNavigate, user }: { onNavigate: (v: View) => void; u
         </div>
       </aside>
 
-      <main className="flex-1 ml-64 min-h-screen flex flex-col">
-        <header className="h-16 bg-card border-b border-border flex items-center justify-between px-8 sticky top-0 z-30">
-          <div>
-            <h1 className="font-display text-xl text-foreground">
+      <main className="flex-1 md:ml-64 min-h-screen flex flex-col">
+        <header className="h-14 md:h-16 bg-card border-b border-border flex items-center justify-between px-4 md:px-8 sticky top-0 z-30">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setSidebarOpen(true)} className="md:hidden w-9 h-9 flex items-center justify-center rounded-sm hover:bg-muted transition-colors">
+              <Menu className="w-4 h-4 text-muted-foreground" />
+            </button>
+            <h1 className="font-display text-lg md:text-xl text-foreground">
               {activeSection === "overview" && "Dashboard Overview"}
               {activeSection === "tables" && "Tables & Restaurants"}
               {activeSection === "requests" && "Incoming Requests"}
@@ -1256,24 +1252,24 @@ function AdminDashboard({ onNavigate, user }: { onNavigate: (v: View) => void; u
           </div>
         </header>
 
-        <div className="flex-1 p-8">
+        <div className="flex-1 p-4 md:p-8">
           {/* Stats */}
-          <div className="grid grid-cols-12 gap-4 mb-8">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
             {[
               { label: "Restaurants", value: restaurants.length, sub: "registered" },
               { label: "Total Tables", value: tables.length, sub: "capacity tracked" },
               { label: "Available Now", value: availableCount, sub: "ready for guests" },
               { label: "Pending Requests", value: pendingCount, sub: "awaiting approval" },
             ].map(({ label, value, sub }) => (
-              <div key={label} className="col-span-12 sm:col-span-6 lg:col-span-3 bg-card border border-border rounded-sm p-5">
+              <div key={label} className="bg-card border border-border rounded-sm p-4 md:p-5">
                 <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground">{label}</p>
-                <p className="font-display text-4xl leading-none text-foreground mt-2">{value}</p>
+                <p className="font-display text-3xl md:text-4xl leading-none text-foreground mt-2">{value}</p>
                 <p className="text-[10px] text-muted-foreground font-mono mt-2 uppercase tracking-wider">{sub}</p>
               </div>
             ))}
           </div>
 
-          {/* ── OVERVIEW: show pending requests + table status summary ── */}
+          {/* ── OVERVIEW ── */}
           {activeSection === "overview" && (
             <div className="space-y-8">
               <div>
@@ -1293,55 +1289,54 @@ function AdminDashboard({ onNavigate, user }: { onNavigate: (v: View) => void; u
               </div>
               <div>
                 <h2 className="font-display text-xl text-foreground mb-4">Recent Tables</h2>
-                <TablesTable tables={tables.slice(0, 8)} restaurants={restaurants} onDelete={(t) => setDeleteTableTarget(t)} onStatusChange={handleTableStatusChange} /> 
-                </div>
+                <TablesTable tables={tables.slice(0, 8)} restaurants={restaurants} onDelete={(t) => setDeleteTableTarget(t)} onStatusChange={handleTableStatusChange} />
+              </div>
             </div>
           )}
 
           {/* ── TABLES & RESTAURANTS ── */}
           {activeSection === "tables" && (
             <div className="space-y-8">
-              {/* Add Forms */}
-              <div className="grid grid-cols-12 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Add Restaurant */}
-                <div className="col-span-12 lg:col-span-6 bg-card border border-border rounded-sm p-6">
+                <div className="bg-card border border-border rounded-sm p-5 md:p-6">
                   <h2 className="font-display text-xl text-foreground mb-1">Add Restaurant</h2>
                   <p className="text-muted-foreground text-xs font-mono mb-5">Create a restaurant customers can book</p>
                   {restaurantError && <div className="mb-4 px-4 py-3 rounded-sm bg-red-50 border border-red-200 flex items-center gap-2"><AlertCircle className="w-4 h-4 text-red-500 shrink-0" /><p className="text-red-600 text-sm">{restaurantError}</p></div>}
-                  <div className="grid grid-cols-12 gap-3">
-                    <div className="col-span-12">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2">
                       <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1.5">Name <span className="text-red-400">*</span></label>
                       <input className="w-full bg-input-background text-foreground text-sm px-4 py-2.5 rounded-sm border border-transparent focus:border-[#059669] outline-none transition-colors placeholder:text-muted-foreground" value={newRestaurant.name} onChange={(e) => setNewRestaurant((s) => ({ ...s, name: e.target.value }))} placeholder="e.g. Sakura Sushi" />
                     </div>
-                    <div className="col-span-12">
+                    <div className="col-span-2">
                       <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1.5">Description</label>
                       <textarea className="w-full bg-input-background text-foreground text-sm px-4 py-2.5 rounded-sm border border-transparent focus:border-[#059669] outline-none transition-colors resize-none placeholder:text-muted-foreground" value={newRestaurant.description} onChange={(e) => setNewRestaurant((s) => ({ ...s, description: e.target.value }))} placeholder="Short description…" rows={2} />
                     </div>
-                    <div className="col-span-12">
+                    <div className="col-span-2">
                       <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1.5">Address <span className="text-red-400">*</span></label>
                       <input className="w-full bg-input-background text-foreground text-sm px-4 py-2.5 rounded-sm border border-transparent focus:border-[#059669] outline-none transition-colors placeholder:text-muted-foreground" value={newRestaurant.address} onChange={(e) => setNewRestaurant((s) => ({ ...s, address: e.target.value }))} placeholder="Street address" />
                     </div>
-                    <div className="col-span-6">
+                    <div>
                       <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1.5">City <span className="text-red-400">*</span></label>
                       <input className="w-full bg-input-background text-foreground text-sm px-4 py-2.5 rounded-sm border border-transparent focus:border-[#059669] outline-none transition-colors placeholder:text-muted-foreground" value={newRestaurant.city} onChange={(e) => setNewRestaurant((s) => ({ ...s, city: e.target.value }))} placeholder="e.g. Jakarta" />
                     </div>
-                    <div className="col-span-6">
+                    <div>
                       <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1.5">Cuisine</label>
                       <input className="w-full bg-input-background text-foreground text-sm px-4 py-2.5 rounded-sm border border-transparent focus:border-[#059669] outline-none transition-colors placeholder:text-muted-foreground" value={newRestaurant.cuisine} onChange={(e) => setNewRestaurant((s) => ({ ...s, cuisine: e.target.value }))} placeholder="e.g. Japanese" />
                     </div>
-                    <div className="col-span-6">
+                    <div>
                       <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1.5">Opening Time</label>
                       <input type="time" className="w-full bg-input-background text-foreground text-sm px-4 py-2.5 rounded-sm border border-transparent focus:border-[#059669] outline-none transition-colors" value={newRestaurant.opening_time} onChange={(e) => setNewRestaurant((s) => ({ ...s, opening_time: e.target.value }))} />
                     </div>
-                    <div className="col-span-6">
+                    <div>
                       <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1.5">Closing Time</label>
                       <input type="time" className="w-full bg-input-background text-foreground text-sm px-4 py-2.5 rounded-sm border border-transparent focus:border-[#059669] outline-none transition-colors" value={newRestaurant.closing_time} onChange={(e) => setNewRestaurant((s) => ({ ...s, closing_time: e.target.value }))} />
                     </div>
-                    <div className="col-span-6">
+                    <div>
                       <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1.5">Phone</label>
                       <input className="w-full bg-input-background text-foreground text-sm px-4 py-2.5 rounded-sm border border-transparent focus:border-[#059669] outline-none transition-colors placeholder:text-muted-foreground" value={newRestaurant.phone} onChange={(e) => setNewRestaurant((s) => ({ ...s, phone: e.target.value }))} placeholder="Optional" />
                     </div>
-                    <div className="col-span-6 flex items-end">
+                    <div className="flex items-end">
                       <button onClick={handleAddRestaurant} disabled={addingRestaurant} className="w-full bg-[#059669] text-white text-sm font-medium py-2.5 rounded-sm hover:bg-[#047857] transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2">
                         {addingRestaurant ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><Plus className="w-4 h-4" /> Create Restaurant</>}
                       </button>
@@ -1350,31 +1345,31 @@ function AdminDashboard({ onNavigate, user }: { onNavigate: (v: View) => void; u
                 </div>
 
                 {/* Add Table */}
-                <div className="col-span-12 lg:col-span-6 bg-card border border-border rounded-sm p-6">
+                <div className="bg-card border border-border rounded-sm p-5 md:p-6">
                   <h2 className="font-display text-xl text-foreground mb-1">Add Table</h2>
                   <p className="text-muted-foreground text-xs font-mono mb-5">Assign a table to a restaurant</p>
                   {tableError && <div className="mb-4 px-4 py-3 rounded-sm bg-red-50 border border-red-200 flex items-center gap-2"><AlertCircle className="w-4 h-4 text-red-500 shrink-0" /><p className="text-red-600 text-sm">{tableError}</p></div>}
-                  <div className="grid grid-cols-12 gap-3">
-                    <div className="col-span-12">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2">
                       <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1.5">Restaurant <span className="text-red-400">*</span></label>
                       <select className="w-full bg-input-background text-foreground text-sm px-4 py-2.5 rounded-sm border border-transparent focus:border-[#059669] outline-none transition-colors" value={newTable.restaurant_id} onChange={(e) => setNewTable((s) => ({ ...s, restaurant_id: e.target.value }))}>
                         <option value="">Select restaurant…</option>
                         {restaurants.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                       </select>
                     </div>
-                    <div className="col-span-6">
+                    <div>
                       <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1.5">Table Number <span className="text-red-400">*</span></label>
                       <input className="w-full bg-input-background text-foreground text-sm px-4 py-2.5 rounded-sm border border-transparent focus:border-[#059669] outline-none transition-colors placeholder:text-muted-foreground" value={newTable.table_number} onChange={(e) => setNewTable((s) => ({ ...s, table_number: e.target.value }))} placeholder="T-01" />
                     </div>
-                    <div className="col-span-6">
+                    <div>
                       <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1.5">Capacity</label>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
                         <button onClick={() => setNewTable((s) => ({ ...s, capacity: Math.max(1, s.capacity - 1) }))} className="w-9 h-9 rounded-sm border border-border flex items-center justify-center hover:bg-muted transition-colors shrink-0"><Minus className="w-3.5 h-3.5" /></button>
                         <span className="font-display text-xl text-foreground w-8 text-center">{newTable.capacity}</span>
                         <button onClick={() => setNewTable((s) => ({ ...s, capacity: Math.min(50, s.capacity + 1) }))} className="w-9 h-9 rounded-sm border border-border flex items-center justify-center hover:bg-muted transition-colors shrink-0"><Plus className="w-3.5 h-3.5" /></button>
                       </div>
                     </div>
-                    <div className="col-span-6">
+                    <div>
                       <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1.5">Status</label>
                       <select className="w-full bg-input-background text-foreground text-sm px-4 py-2.5 rounded-sm border border-transparent focus:border-[#059669] outline-none transition-colors" value={newTable.status} onChange={(e) => setNewTable((s) => ({ ...s, status: e.target.value as Table["status"] }))}>
                         <option value="available">Available</option>
@@ -1382,11 +1377,11 @@ function AdminDashboard({ onNavigate, user }: { onNavigate: (v: View) => void; u
                         <option value="maintenance">Maintenance</option>
                       </select>
                     </div>
-                    <div className="col-span-6">
+                    <div>
                       <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1.5">Location</label>
                       <input className="w-full bg-input-background text-foreground text-sm px-4 py-2.5 rounded-sm border border-transparent focus:border-[#059669] outline-none transition-colors placeholder:text-muted-foreground" value={newTable.location} onChange={(e) => setNewTable((s) => ({ ...s, location: e.target.value }))} placeholder="e.g. Indoor, Window…" />
                     </div>
-                    <div className="col-span-12">
+                    <div className="col-span-2">
                       <button onClick={handleAddTable} disabled={addingTable} className="w-full bg-[#059669] text-white text-sm font-medium py-2.5 rounded-sm hover:bg-[#047857] transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2">
                         {addingTable ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><Plus className="w-4 h-4" /> Create Table</>}
                       </button>
@@ -1410,24 +1405,45 @@ function AdminDashboard({ onNavigate, user }: { onNavigate: (v: View) => void; u
                   <div className="py-10 text-center bg-card border border-border rounded-sm text-muted-foreground text-sm">No restaurants yet. Add one above.</div>
                 ) : (
                   <div className="bg-card border border-border rounded-sm overflow-hidden">
-                    <div className="grid grid-cols-12 gap-4 px-6 py-3 bg-muted border-b border-border">
-                      {["Name", "City", "Cuisine", "Hours", "Status", "Action"].map((h, i) => (
-                        <p key={h} className={`text-[10px] font-mono uppercase tracking-widest text-muted-foreground ${i === 5 ? "col-span-1 text-right" : i < 3 ? "col-span-2" : "col-span-2"}`}>{h}</p>
-                      ))}
-                    </div>
-                    <div className="divide-y divide-border">
+                    {/* Mobile restaurant cards */}
+                    <div className="divide-y divide-border md:hidden">
                       {restaurants.map((r) => (
-                        <div key={r.id} className="grid grid-cols-12 gap-4 px-6 py-3 items-center hover:bg-muted/40 transition-colors">
-                          <div className="col-span-2"><p className="text-sm font-medium text-foreground truncate">{r.name}</p></div>
-                          <div className="col-span-2"><p className="text-sm text-muted-foreground font-mono">{r.city ?? "—"}</p></div>
-                          <div className="col-span-2"><p className="text-sm text-muted-foreground">{r.cuisine ?? "—"}</p></div>
-                          <div className="col-span-2"><p className="text-xs text-muted-foreground font-mono">{r.opening_time?.slice(0,5) ?? "—"} – {r.closing_time?.slice(0,5) ?? "—"}</p></div>
-                          <div className="col-span-2"><StatusBadge status={r.is_active !== false ? "available" : "maintenance"} /></div>
-                          <div className="col-span-2 flex justify-end">
-                            <button onClick={() => setDeleteRestTarget(r)} className="text-xs text-red-400 hover:text-red-600 transition-colors font-mono flex items-center gap-1 px-2 py-1 border border-red-200 rounded-sm hover:border-red-300"><Trash2 className="w-3 h-3" /> Delete</button>
+                        <div key={r.id} className="p-4">
+                          <div className="flex items-start justify-between mb-2">
+                            <div>
+                              <p className="text-sm font-medium text-foreground">{r.name}</p>
+                              <p className="text-xs text-muted-foreground font-mono">{r.city ?? "—"} · {r.cuisine ?? "—"}</p>
+                            </div>
+                            <StatusBadge status={r.is_active !== false ? "available" : "maintenance"} />
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs text-muted-foreground font-mono">{r.opening_time?.slice(0,5) ?? "—"} – {r.closing_time?.slice(0,5) ?? "—"}</p>
+                            <button onClick={() => setDeleteRestTarget(r)} className="text-xs text-red-400 hover:text-red-600 transition-colors font-mono flex items-center gap-1 px-2 py-1 border border-red-200 rounded-sm"><Trash2 className="w-3 h-3" /> Delete</button>
                           </div>
                         </div>
                       ))}
+                    </div>
+                    {/* Desktop table */}
+                    <div className="hidden md:block">
+                      <div className="grid grid-cols-12 gap-4 px-6 py-3 bg-muted border-b border-border">
+                        {["Name", "City", "Cuisine", "Hours", "Status", "Action"].map((h, i) => (
+                          <p key={h} className={`text-[10px] font-mono uppercase tracking-widest text-muted-foreground ${i === 5 ? "col-span-2 text-right" : "col-span-2"}`}>{h}</p>
+                        ))}
+                      </div>
+                      <div className="divide-y divide-border">
+                        {restaurants.map((r) => (
+                          <div key={r.id} className="grid grid-cols-12 gap-4 px-6 py-3 items-center hover:bg-muted/40 transition-colors">
+                            <div className="col-span-2"><p className="text-sm font-medium text-foreground truncate">{r.name}</p></div>
+                            <div className="col-span-2"><p className="text-sm text-muted-foreground font-mono">{r.city ?? "—"}</p></div>
+                            <div className="col-span-2"><p className="text-sm text-muted-foreground">{r.cuisine ?? "—"}</p></div>
+                            <div className="col-span-2"><p className="text-xs text-muted-foreground font-mono">{r.opening_time?.slice(0,5) ?? "—"} – {r.closing_time?.slice(0,5) ?? "—"}</p></div>
+                            <div className="col-span-2"><StatusBadge status={r.is_active !== false ? "available" : "maintenance"} /></div>
+                            <div className="col-span-2 flex justify-end">
+                              <button onClick={() => setDeleteRestTarget(r)} className="text-xs text-red-400 hover:text-red-600 transition-colors font-mono flex items-center gap-1 px-2 py-1 border border-red-200 rounded-sm hover:border-red-300"><Trash2 className="w-3 h-3" /> Delete</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1459,7 +1475,7 @@ function AdminDashboard({ onNavigate, user }: { onNavigate: (v: View) => void; u
 
           {/* ── SETTINGS ── */}
           {activeSection === "settings" && (
-            <div className="bg-card border border-border rounded-sm p-8 max-w-2xl">
+            <div className="bg-card border border-border rounded-sm p-6 md:p-8 max-w-2xl">
               <h3 className="font-display text-xl text-foreground mb-6">Admin Settings</h3>
               <div className="space-y-5">
                 {[{ label: "Admin Name", value: displayName }, { label: "Email", value: user?.email ?? "" }].map(({ label, value }) => (
@@ -1480,7 +1496,7 @@ function AdminDashboard({ onNavigate, user }: { onNavigate: (v: View) => void; u
       {/* Modals */}
       {rejectTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => { setRejectTarget(null); setRejectReason(""); }}>
-          <div className="bg-card rounded-sm p-8 max-w-sm w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-card rounded-sm p-6 md:p-8 max-w-sm w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="w-12 h-12 rounded-full flex items-center justify-center mb-5 bg-red-50 border border-red-200">
               <AlertCircle className="w-6 h-6 text-red-500" />
             </div>
@@ -1497,42 +1513,22 @@ function AdminDashboard({ onNavigate, user }: { onNavigate: (v: View) => void; u
             />
             <div className="flex gap-3">
               <button onClick={() => { setRejectTarget(null); setRejectReason(""); }} className="flex-1 text-sm px-4 py-2.5 rounded-sm border border-border text-muted-foreground hover:bg-muted transition-colors">Cancel</button>
-              <button
-                onClick={() => handleReject(rejectTarget)}
-                disabled={!rejectReason.trim()}
-                className="flex-1 text-sm px-4 py-2.5 rounded-sm text-white bg-red-500 hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Reject
-              </button>
+              <button onClick={() => handleReject(rejectTarget)} disabled={!rejectReason.trim()} className="flex-1 text-sm px-4 py-2.5 rounded-sm text-white bg-red-500 hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Reject</button>
             </div>
           </div>
         </div>
       )}
       {deleteRestTarget && (
-        <ConfirmModal
-          title="Delete Restaurant?"
-          message={`Delete "${deleteRestTarget.name}"? This will also remove all associated tables.`}
-          confirmLabel="Delete"
-          danger
-          onConfirm={() => handleDeleteRestaurant(deleteRestTarget)}
-          onClose={() => setDeleteRestTarget(null)}
-        />
+        <ConfirmModal title="Delete Restaurant?" message={`Delete "${deleteRestTarget.name}"? This will also remove all associated tables.`} confirmLabel="Delete" danger onConfirm={() => handleDeleteRestaurant(deleteRestTarget)} onClose={() => setDeleteRestTarget(null)} />
       )}
       {deleteTableTarget && (
-        <ConfirmModal
-          title="Delete Table?"
-          message={`Delete table ${deleteTableTarget.table_number}?`}
-          confirmLabel="Delete"
-          danger
-          onConfirm={() => handleDeleteTable(deleteTableTarget)}
-          onClose={() => setDeleteTableTarget(null)}
-        />
+        <ConfirmModal title="Delete Table?" message={`Delete table ${deleteTableTarget.table_number}?`} confirmLabel="Delete" danger onConfirm={() => handleDeleteTable(deleteTableTarget)} onClose={() => setDeleteTableTarget(null)} />
       )}
     </div>
   );
 }
 
-// ─── REQUEST CARD (shared between overview & requests) ────────────────────────
+// ─── REQUEST CARD ─────────────────────────────────────────────────────────────
 
 function RequestCard({
   req,
@@ -1583,9 +1579,42 @@ function RequestCard({
   };
 
   return (
-    <div className={`bg-card border rounded-sm p-5 transition-all ${isPending ? "border-border hover:border-[#059669]/30" : req.status === "confirmed" ? "border-emerald-200 bg-emerald-50/20" : "border-red-100 bg-red-50/10 opacity-70"}`}>
-      <div className="grid grid-cols-12 gap-4 items-start">
-        <div className="col-span-12 md:col-span-3">
+    <div className={`bg-card border rounded-sm p-4 md:p-5 transition-all ${isPending ? "border-border hover:border-[#059669]/30" : req.status === "confirmed" ? "border-emerald-200 bg-emerald-50/20" : "border-red-100 bg-red-50/10 opacity-70"}`}>
+      {/* Mobile layout */}
+      <div className="md:hidden space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-sm bg-muted flex items-center justify-center shrink-0"><User className="w-3.5 h-3.5 text-muted-foreground" /></div>
+            <div>
+              <p className="text-sm font-medium text-foreground">{req.User?.name ?? "Guest"}</p>
+              <p className="text-[10px] text-muted-foreground font-mono">{req.User?.email ?? "—"}</p>
+            </div>
+          </div>
+          {!isPending && <StatusBadge status={req.status} />}
+        </div>
+        <div className="flex flex-wrap gap-x-3 gap-y-1">
+          <div className="flex items-center gap-1 text-xs text-muted-foreground"><Utensils className="w-3 h-3" /><span className="font-medium text-foreground">{req.Restaurant?.name ?? "—"}</span></div>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground"><Calendar className="w-3 h-3" /><span className="font-mono">{req.reservation_date}</span></div>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground"><Clock className="w-3 h-3" /><span className="font-mono">{req.start_time?.slice(0,5)} – {req.end_time?.slice(0,5)}</span></div>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground"><Users className="w-3 h-3" /><span className="font-mono">{req.guest_count} guests</span></div>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground"><Table2 className="w-3 h-3" /><span className="font-mono">{req.Table?.table_number ?? "—"}</span></div>
+        </div>
+        {req.special_request && <p className="text-xs text-muted-foreground italic border-l-2 border-border pl-3">"{req.special_request}"</p>}
+        {isPending && (
+          <div className="flex gap-2">
+            <button onClick={() => onReject(req)} disabled={!!actionLoading} className="flex-1 flex items-center justify-center gap-1.5 text-xs font-mono uppercase tracking-wider px-3 py-2 rounded-sm border border-red-200 text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50">
+              {actionLoading === req.id + "-reject" ? <div className="w-3 h-3 border-2 border-red-300 border-t-red-500 rounded-full animate-spin" /> : <XCircle className="w-3 h-3" />} Reject
+            </button>
+            <button onClick={() => onApprove(req)} disabled={!!actionLoading} className="flex-1 flex items-center justify-center gap-1.5 text-xs font-mono uppercase tracking-wider px-3 py-2 rounded-sm bg-[#059669] text-white hover:bg-[#047857] transition-colors disabled:opacity-50">
+              {actionLoading === req.id + "-approve" ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <CheckCircle className="w-3 h-3" />} Approve
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Desktop layout */}
+      <div className="hidden md:grid grid-cols-12 gap-4 items-start">
+        <div className="col-span-3">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-sm bg-muted flex items-center justify-center shrink-0"><User className="w-4 h-4 text-muted-foreground" /></div>
             <div>
@@ -1594,7 +1623,7 @@ function RequestCard({
             </div>
           </div>
         </div>
-        <div className="col-span-12 md:col-span-5">
+        <div className="col-span-5">
           <div className="flex flex-wrap gap-x-4 gap-y-1.5">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Utensils className="w-3.5 h-3.5" /><span className="font-medium text-foreground">{req.Restaurant?.name ?? "—"}</span></div>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Calendar className="w-3.5 h-3.5" /><span className="font-mono">{req.reservation_date}</span></div>
@@ -1602,25 +1631,15 @@ function RequestCard({
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Users className="w-3.5 h-3.5" /><span className="font-mono">{req.guest_count} guests</span></div>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Table2 className="w-3.5 h-3.5" /><span className="font-mono">{req.Table?.table_number ?? "—"}</span></div>
           </div>
-          {req.special_request && (
-            <p className="text-xs text-muted-foreground mt-2 italic leading-relaxed border-l-2 border-border pl-3">"{req.special_request}"</p>
-          )}
+          {req.special_request && <p className="text-xs text-muted-foreground mt-2 italic leading-relaxed border-l-2 border-border pl-3">"{req.special_request}"</p>}
         </div>
-        <div className="col-span-12 md:col-span-4 flex items-center justify-end gap-3">
+        <div className="col-span-4 flex items-center justify-end gap-3">
           {isPending ? (
             <>
-              <button
-                onClick={() => onReject(req)}
-                disabled={!!actionLoading}
-                className="flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider px-4 py-2 rounded-sm border border-red-200 text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
-              >
+              <button onClick={() => onReject(req)} disabled={!!actionLoading} className="flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider px-4 py-2 rounded-sm border border-red-200 text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50">
                 {actionLoading === req.id + "-reject" ? <div className="w-3.5 h-3.5 border-2 border-red-300 border-t-red-500 rounded-full animate-spin" /> : <XCircle className="w-3.5 h-3.5" />} Reject
               </button>
-              <button
-                onClick={() => onApprove(req)}
-                disabled={!!actionLoading}
-                className="flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider px-4 py-2 rounded-sm bg-[#059669] text-white hover:bg-[#047857] transition-colors disabled:opacity-50"
-              >
+              <button onClick={() => onApprove(req)} disabled={!!actionLoading} className="flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider px-4 py-2 rounded-sm bg-[#059669] text-white hover:bg-[#047857] transition-colors disabled:opacity-50">
                 {actionLoading === req.id + "-approve" ? <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />} Approve
               </button>
             </>
@@ -1630,20 +1649,13 @@ function RequestCard({
         </div>
       </div>
 
-      {/* Check Availability — hanya untuk pending */}
+      {/* Check Availability */}
       {isPending && (
         <div className="mt-3 border-t border-border pt-3">
-          <button
-            onClick={checkAvailability}
-            className="flex items-center gap-1.5 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
-          >
-            {loadingAvail
-              ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              : <Eye className="w-3.5 h-3.5" />
-            }
+          <button onClick={checkAvailability} className="flex items-center gap-1.5 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors">
+            {loadingAvail ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
             {showSchedule ? "Refresh Availability" : "Check Availability"}
           </button>
-
           {showSchedule && (
             <div className="mt-3">
               {loadingAvail ? (
@@ -1674,13 +1686,7 @@ function RequestCard({
                             const booked = isSessionBooked(t.id, s.start, s.end);
                             return (
                               <td key={s.start} className="px-2 py-1 text-center">
-                                <span className={`inline-block w-5 h-5 rounded-sm border ${
-                                  t.status === "maintenance"
-                                    ? "bg-muted border-border"
-                                    : booked
-                                    ? "bg-red-100 border-red-300"
-                                    : "bg-emerald-100 border-emerald-300"
-                                }`} />
+                                <span className={`inline-block w-5 h-5 rounded-sm border ${t.status === "maintenance" ? "bg-muted border-border" : booked ? "bg-red-100 border-red-300" : "bg-emerald-100 border-emerald-300"}`} />
                               </td>
                             );
                           })}
@@ -1688,7 +1694,7 @@ function RequestCard({
                       ))}
                     </tbody>
                   </table>
-                  <div className="flex items-center gap-3 mt-2">
+                  <div className="flex items-center gap-3 mt-2 flex-wrap">
                     <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-emerald-100 border border-emerald-300 inline-block" /><span className="text-[10px] text-muted-foreground">Available</span></div>
                     <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-red-100 border border-red-300 inline-block" /><span className="text-[10px] text-muted-foreground">Booked</span></div>
                     <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-amber-50 border border-amber-200 inline-block" /><span className="text-[10px] text-muted-foreground">This table</span></div>
@@ -1724,7 +1730,6 @@ function TablesTable({
   const [loadingSchedule, setLoadingSchedule] = useState(false);
   const [scheduleRestId, setScheduleRestId] = useState<string>("");
 
-  // Auto-pick first restaurant
   useEffect(() => {
     if (restaurants.length > 0 && !scheduleRestId) {
       setScheduleRestId(restaurants[0].id);
@@ -1770,24 +1775,52 @@ function TablesTable({
     <div className="space-y-4">
       {/* Controls */}
       <div className="flex items-center gap-3 flex-wrap">
-        <select
-          value={scheduleRestId}
-          onChange={(e) => setScheduleRestId(e.target.value)}
-          className="bg-card border border-border text-foreground text-xs font-mono px-3 py-1.5 rounded-sm outline-none focus:border-[#059669] transition-colors"
-        >
+        <select value={scheduleRestId} onChange={(e) => setScheduleRestId(e.target.value)} className="bg-card border border-border text-foreground text-xs font-mono px-3 py-1.5 rounded-sm outline-none focus:border-[#059669] transition-colors">
           {restaurants.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
         </select>
-        <input
-          type="date"
-          value={scheduleDate}
-          onChange={(e) => setScheduleDate(e.target.value)}
-          className="bg-card border border-border text-foreground text-xs font-mono px-3 py-1.5 rounded-sm outline-none focus:border-[#059669] transition-colors"
-        />
+        <input type="date" value={scheduleDate} onChange={(e) => setScheduleDate(e.target.value)} className="bg-card border border-border text-foreground text-xs font-mono px-3 py-1.5 rounded-sm outline-none focus:border-[#059669] transition-colors" />
         {loadingSchedule && <RefreshCw className="w-3.5 h-3.5 text-muted-foreground animate-spin" />}
       </div>
 
-      {/* Table + Session Grid */}
-      <div className="bg-card border border-border rounded-sm overflow-x-auto">
+      {/* Mobile: card view */}
+      <div className="md:hidden space-y-3">
+        {filteredTables.length === 0 ? (
+          <div className="py-8 text-center bg-card border border-border rounded-sm text-muted-foreground text-sm">No tables for this restaurant.</div>
+        ) : filteredTables.map((t) => (
+          <div key={t.id} className="bg-card border border-border rounded-sm p-4">
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <p className="font-mono font-medium text-foreground">{t.table_number}</p>
+                <p className="text-muted-foreground text-xs mt-0.5">{t.capacity} seats{t.location ? ` · ${t.location}` : ""}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <select value={t.status} onChange={(e) => onStatusChange(t, e.target.value as Table["status"])} className="text-[10px] font-mono bg-card border border-border rounded-sm px-2 py-1 outline-none focus:border-[#059669] transition-colors text-foreground">
+                  <option value="available">Available</option>
+                  <option value="reserved">Reserved</option>
+                  <option value="maintenance">Maintenance</option>
+                </select>
+                <button onClick={() => onDelete(t)} className="text-xs text-red-400 hover:text-red-600 transition-colors px-2 py-1 border border-red-200 rounded-sm">
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+            {sessions.length > 0 && (
+              <div className="flex gap-1 flex-wrap">
+                {sessions.map((s) => {
+                  const booked = isSessionBooked(t.id, s.start, s.end);
+                  const isMaintenance = t.status === "maintenance";
+                  return (
+                    <span key={s.start} title={s.label} className={`inline-block w-5 h-5 rounded-sm border ${isMaintenance ? "bg-muted border-border" : booked ? "bg-red-100 border-red-300" : "bg-emerald-100 border-emerald-300"}`} />
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop: table grid */}
+      <div className="hidden md:block bg-card border border-border rounded-sm overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-border bg-muted">
@@ -1802,42 +1835,37 @@ function TablesTable({
           <tbody className="divide-y divide-border">
             {filteredTables.length === 0 ? (
               <tr><td colSpan={sessions.length + 3} className="text-center py-8 text-muted-foreground">No tables for this restaurant.</td></tr>
-            ) : (
-              filteredTables.map((t) => (
-                <tr key={t.id} className="hover:bg-muted/40 transition-colors">
-                  <td className="px-4 py-3 sticky left-0 bg-card">
-                    <p className="font-mono font-medium text-foreground">{t.table_number}</p>
-                    <p className="text-muted-foreground text-[10px] mt-0.5">{t.capacity} seats{t.location ? ` · ${t.location}` : ""}</p>
-                  </td>
-                  <td className="px-4 py-3">
-                    {t.status === "maintenance" ? (
-                      <span className="inline-flex items-center font-mono text-[10px] tracking-widest uppercase border px-2 py-0.5 rounded-sm bg-muted text-muted-foreground border-border">maintenance</span>
-                    ) : (
-                      <span className="inline-flex items-center font-mono text-[10px] tracking-widest uppercase border px-2 py-0.5 rounded-sm bg-emerald-50 text-[#059669] border-emerald-200">active</span>
-                    )}
-                  </td>
-                  {sessions.map((s) => {
-                    const booked = isSessionBooked(t.id, s.start, s.end);
-                    const isMaintenance = t.status === "maintenance";
-                    return (
-                      <td key={s.start} className="px-3 py-3 text-center">
-                        {isMaintenance ? (
-                          <span className="inline-block w-6 h-6 rounded-sm bg-muted border border-border" title="Maintenance" />
-                        ) : booked ? (
-                          <span className="inline-block w-6 h-6 rounded-sm bg-red-100 border border-red-300" title="Booked" />
-                        ) : (
-                          <span className="inline-block w-6 h-6 rounded-sm bg-emerald-100 border border-emerald-300" title="Available" />
-                        )}
-                      </td>
-                    );
-                  })}
-                  <td className="px-4 py-3 text-right">
+            ) : filteredTables.map((t) => (
+              <tr key={t.id} className="hover:bg-muted/40 transition-colors">
+                <td className="px-4 py-3 sticky left-0 bg-card">
+                  <p className="font-mono font-medium text-foreground">{t.table_number}</p>
+                  <p className="text-muted-foreground text-[10px] mt-0.5">{t.capacity} seats{t.location ? ` · ${t.location}` : ""}</p>
+                </td>
+                <td className="px-4 py-3">
+                  {t.status === "maintenance" ? (
+                    <span className="inline-flex items-center font-mono text-[10px] tracking-widest uppercase border px-2 py-0.5 rounded-sm bg-muted text-muted-foreground border-border">maintenance</span>
+                  ) : (
+                    <span className="inline-flex items-center font-mono text-[10px] tracking-widest uppercase border px-2 py-0.5 rounded-sm bg-emerald-50 text-[#059669] border-emerald-200">active</span>
+                  )}
+                </td>
+                {sessions.map((s) => {
+                  const booked = isSessionBooked(t.id, s.start, s.end);
+                  const isMaintenance = t.status === "maintenance";
+                  return (
+                    <td key={s.start} className="px-3 py-3 text-center">
+                      {isMaintenance ? (
+                        <span className="inline-block w-6 h-6 rounded-sm bg-muted border border-border" title="Maintenance" />
+                      ) : booked ? (
+                        <span className="inline-block w-6 h-6 rounded-sm bg-red-100 border border-red-300" title="Booked" />
+                      ) : (
+                        <span className="inline-block w-6 h-6 rounded-sm bg-emerald-100 border border-emerald-300" title="Available" />
+                      )}
+                    </td>
+                  );
+                })}
+                <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-2">
-                    <select
-                      value={t.status}
-                      onChange={(e) => onStatusChange(t, e.target.value as Table["status"])}
-                      className="text-[10px] font-mono bg-card border border-border rounded-sm px-2 py-1 outline-none focus:border-[#059669] transition-colors text-foreground"
-                    >
+                    <select value={t.status} onChange={(e) => onStatusChange(t, e.target.value as Table["status"])} className="text-[10px] font-mono bg-card border border-border rounded-sm px-2 py-1 outline-none focus:border-[#059669] transition-colors text-foreground">
                       <option value="available">Available</option>
                       <option value="reserved">Reserved</option>
                       <option value="maintenance">Maintenance</option>
@@ -1847,14 +1875,11 @@ function TablesTable({
                     </button>
                   </div>
                 </td>
-                </tr>
-              ))
-            )}
+              </tr>
+            ))}
           </tbody>
         </table>
-
-        {/* Legend */}
-        <div className="px-4 py-3 border-t border-border flex items-center gap-4">
+        <div className="px-4 py-3 border-t border-border flex items-center gap-4 flex-wrap">
           <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Legend:</p>
           <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-emerald-100 border border-emerald-300 inline-block" /><span className="text-[10px] font-mono text-muted-foreground">Available</span></div>
           <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-red-100 border border-red-300 inline-block" /><span className="text-[10px] font-mono text-muted-foreground">Booked</span></div>
@@ -1872,7 +1897,6 @@ export default function App() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const { toasts, show } = useToast();
 
-  // expose toast globally
   useEffect(() => { globalToastFn = show; }, [show]);
 
   const handleLogin = (u: AuthUser) => setUser(u);
